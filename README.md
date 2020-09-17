@@ -4,7 +4,7 @@ Columbia Data Science Institute Capstone Project, Fall 2020
 
 Mentor: Dr. Adler Perotte
 
-Instructor: Dr. Adam S. Kellehe
+Instructor: Dr. Adam S. Kelleher
 
 Team member:
 
