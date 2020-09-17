@@ -1,10 +1,13 @@
 # AAPI_code
 
 Columbia Data Science Institute Capstone Project, 2020 Fall
+
 Mentor: Dr. Adler Perotte
+
 Instructor: Dr. Adam S. Kellehe
 
 Team member:
+
 Yihao Li, Chao Huang, Yufeng Ma, Xiaoyun Zhu, Shuo Yang
 
 This project aims to create a machine learning-driven user interface for the annotation of very large
