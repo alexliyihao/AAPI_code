@@ -1,4 +1,4 @@
-# AAPI_code
+# Auto annotation of Pathology Images
 
 Columbia Data Science Institute Capstone Project, Fall 2020
 
