@@ -1,6 +1,6 @@
 # AAPI_code
 
-Columbia Data Science Institute Capstone Project, 2020 Fall
+Columbia Data Science Institute Capstone Project, Fall 2020
 
 Mentor: Dr. Adler Perotte
 
