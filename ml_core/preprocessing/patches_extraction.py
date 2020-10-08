@@ -2,7 +2,7 @@ from typing import Union, List
 from pathlib import Path
 
 import tables
-import PIL
+from PIL import Image
 import cv2
 import numpy as np
 from numpy import ndarray
@@ -47,7 +47,7 @@ class Extractor:
         self.patch_size = patch_size
         self.stride_size = stride_size
 
-    def extract_patches(self, img, interp_method=PIL.Image.BICUBIC) -> ndarray:
+    def extract_patches(self, img, interp_method=Image.BICUBIC) -> ndarray:
         """
         Interface for extracting patches from an image after resizing
 
@@ -166,7 +166,7 @@ def extract_mask_patches(mask_path: Union[Path, str],
     # want to use nearest;
     # otherwise resizing may cause non-existing classes
     # to be produced via interpolation (e.g., ".25")
-    mask_patches = extractor.extract_patches(mask, interp_method=PIL.Image.NEAREST)
+    mask_patches = extractor.extract_patches(mask, interp_method=Image.NEAREST)
 
     # keep all positive patches and sample negative patches;
     # TODO: determine a more intuitive sampling strategy;
