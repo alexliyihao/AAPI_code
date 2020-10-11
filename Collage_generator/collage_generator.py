@@ -6,23 +6,34 @@ from tqdm.notebook import tqdm
 from scipy.stats import mode
 from typing import List, Dict, Tuple
 
+
 class collage_generator(object):
 
     def __init__(self,
-                 label_list: List[str] = ["one", "two"],
+                 label_list: List[str] = ["class_one", "class_two"],
                  canvas_size: Tuple[int,int] = (1024, 1024),
-                 example_image = str,
-                 patience: int = 10,
-                 gaussian_noise_constant: float = 100.0,
+                 example_image: str = "",
+                 patience: int = 100,
+                 gaussian_noise_constant: float = 25.0,
+                 scanning_constant: int = 50,
                  imagedatagenerator = None):
         """
         the initiator
         input:
-          label_list: list of string, the list of label names
-          canvas_size: tuple of length 2, the 2d size of the collage
-          example_image: str/np.ndarray/PIL.imageobject, example_image for background
-          patience: int, the retry time for each insert if overlap
-          gaussian_noise_constant: float, define the strength of gaussian noise onto the background
+          label_list:
+            list of string, the list of label names
+          canvas_size:
+            tuple of length 2, the 2d size of the collage
+          example_image:
+            str/np.ndarray/PIL.imageobject, example_image for background
+          patience:
+            int, the retry time for each insert if overlap
+          gaussian_noise_constant:
+            float, define the strength of gaussian noise onto the background
+          scanning_constant:
+            int, the maximum relocation step try if there's overlapping
+          image_data_generator:
+            keras.image.imagedatagenerator object, if not None, will replace the default one
         """
         assert len(canvas_size) == 2
         self.label_list = label_list
@@ -32,29 +43,36 @@ class collage_generator(object):
         self.patience = patience
         self.gaussian_noise_constant = gaussian_noise_constant
         self.example_img = self.unify_image_format(example_image)
+        self.scanning_constant = scanning_constant
         if imagedatagenerator != None:
             self.datagen = imagedatagenerator
         else:
             self.datagen = ImageDataGenerator(rotation_range = 360,
-                                              width_shift_range=0.1,
-                                              height_shift_range=0.1,
-                                              shear_range = 0.2,
-                                              zoom_range = 0.2,
-                                              fill_mode = "constant",
-                                              cval = 0,
-                                              horizontal_flip= True,
-                                              vertical_flip= True,
-                                              data_format = "channels_last",
-                                              dtype = int)
+                                                width_shift_range=0.1,
+                                                height_shift_range=0.1,
+                                                shear_range = 0.2,
+                                                zoom_range = [1.0, 2.0],
+                                                fill_mode = "constant",
+                                                cval = 0,
+                                                horizontal_flip= True,
+                                                vertical_flip= True,
+                                                data_format = "channels_last",
+                                                dtype = int)
 
     def unify_image_format(self, img, output_format: str = "np"):
         """
-        convert any input image into RGB np.ndarray type
+        convert any image input into RGB np.ndarray type
         input:
-            img: string/np.ndarray/PIL.PngImagePlugin.PngImageFile, the path of image or image itself
-            output_format: "np" or "PIL"
+            img:
+              string, the path of image
+              or
+              np.ndarray/PIL.PngImagePlugin.PngImageFile, the image itself
+
+            output_format: string, "np" or "PIL"
         return:
-            output: RGB np.ndarray, the image
+            output:
+              if output_format = "np", return RGB np.ndarray,
+              if output_format = "PIL", return PIL image object
         """
         assert output_format in ["np", "PIL"]
         # if it's a string
@@ -82,15 +100,15 @@ class collage_generator(object):
     @property
     def patience(self):
         """
-        makes the canvas_size can be access from .canvas_size
+        makes the canvas_size can be access from .patience
         """
         return self._patience
 
     @patience.setter
     def patience(self, patience: int):
         """
-        enforce the update of patience some legal value, the update still from
-        collage_generator.patience = n
+        enforce the update of patience some legal value, the update procedure is
+        still from collage_generator.patience = n
         """
         assert type(patience) == int
         assert patience > 0
@@ -113,6 +131,23 @@ class collage_generator(object):
         assert canvas_size[0] > 0
         assert canvas_size[1] > 0
         self._canvas_size = (canvas_size[1], canvas_size[0])
+
+    @property
+    def scanning_constant(self):
+        """
+        makes the canvas_size can be access from .scanning_constant
+        """
+        return self._scanning_constant
+
+    @scanning_constant.setter
+    def scanning_constant(self, scanning_constant: int):
+        """
+        enforce the update of patience some legal value, the update procedure is
+        still from collage_generator.scanning_constant = n
+        """
+        assert type(scanning_constant) == int
+        assert scanning_constant > 0
+        self._scanning_constant = scanning_constant
 
     def add_label(self, new_label: str):
         """
@@ -137,6 +172,7 @@ class collage_generator(object):
           img: str/np.ndarray/PIL.PngImagePlugin.PngImageFile, the path of the image or the image object
           label: str, the label of the image, which must be in the label list
           size: tuple of int, the size of the image in the image storage
+          pre_determined_size: bool, if False, will ask the user for a correct shape with preview
         """
         assert label in self.label_list
         read_in = self.unify_image_format(img, output_format = "PIL")
@@ -175,7 +211,7 @@ class collage_generator(object):
                     size = (new_x, new_y)
 
         self.image_list[self.label_dict[label]-1].append(np_img)
-        print(f'image succesfully added to label "{label}"')
+        print(f'image succesfully added to label "{label}" with size {size}')
 
     def single_image_preview(self, img: np.ndarray, canvas_size: Tuple[int,int] = (1,1)):
         """
@@ -186,7 +222,9 @@ class collage_generator(object):
         return:
           canvas: a canvas with img on the topleft corner
         """
-        canvas = np.ones((*self.canvas_size,3), dtype="uint8")*255
+        canvas = np.full(shape =(*self.canvas_size,3),
+                         fill_value = 255,
+                         dtype="uint8")
         canvas = self.canvas_append(canvas = canvas,
                                     add_point = (0,0),
                                     img = img)
@@ -254,18 +292,32 @@ class collage_generator(object):
                 if the tries in {patience} times succssfully added the img onto canvas,
                 otherwise the original mask if returned
       """
+      _outer_bound = (canvas.shape[0] - img.shape[0], canvas.shape[1] - img.shape[1])
+      # select an initial add_point
+      _add_point = np.array((np.random.randint(low = self.scanning_constant,
+                                               high = _outer_bound[0] - self.scanning_constant),
+                            np.random.randint(low = self.scanning_constant,
+                                              high = _outer_bound[1] - self.scanning_constant)))
+
+      _img_mask = np.any(img, axis = 2)
+
       for retry in range(patience):
-          # select a add_point
-          _add_point = np.array((np.random.randint(0, canvas.shape[0] - img.shape[0]),
-                                np.random.randint(0, canvas.shape[1] - img.shape[1])))
-          _img_mask = np.any(img, axis = 2)
-          _check_zone = mask[_add_point[0]:_add_point[0]+_img_mask.shape[0], _add_point[1]:_add_point[1]+_img_mask.shape[1]]
+          # for each time make a small move
+          _add_point = _add_point + np.random.randint(low = -1*self.scanning_constant,
+                                                      high = self.scanning_constant,
+                                                      size = 2)
+          # make sure the new value is legal
+          _add_point = np.clip(a = _add_point,
+                               a_min = (0,0),
+                               a_max = _outer_bound)
+
           # check if there's any overlap
+          _check_zone = mask[_add_point[0]:_add_point[0]+_img_mask.shape[0], _add_point[1]:_add_point[1]+_img_mask.shape[1]]
           # if so
           if np.any(np.multiply(_check_zone,_img_mask)) == True:
             #retry for a new point
             continue
-          # otherwise add the img to canvas and mask
+          # otherwise add the img to canvas and mask and stop retry
           else:
             canvas, mask = self.canvas_append(canvas = canvas,
                                               add_point = _add_point,
@@ -277,39 +329,42 @@ class collage_generator(object):
 
     def multinomial_distribution(self, prob_distribution):
         """
-        I don't even know np and scipy's multinomial sampling is that weird...
+        Just a wrapper, I don't even know np and scipy's multinomial sampling is that weird...
         input:
           prob_distribution: any iterable, the multinomial distribution probability
         output:
-          a single sample from this probability
+          a sample from probability provided
         """
         return np.nonzero(np.random.multinomial(1,prob_distribution))[0][0]
 
 
     def generate(self,
-                 item_num: int = 10,
-                 ratio_list: List[float] = [1.0,0.0]
+                 item_num: int = 200,
+                 ratio_list: List[float] = [1.0,0.0],
+                 background_color = False
                  ):
         """
         the method to generate a new 3-channel collage and a mask
         input:
           item_num: int, the total number of items in this image
           ratio_list: list[float], the ratio of each cass, the number must be same to the labels
+          background_color: bool, if True, will add a background color based on self.example_image
 
         return:
           _canvas: np.ndarray, self._canvas_size shape, 3 channel, the canvas with images added
           _mask, np.ndarray, self._canvas_size shape, 1 channel, the mask of the canvas
           label_dict: dict, the dictionary of label name and label value
-
         """
 
         assert len(ratio_list) == len(self.label_dict)
         # in case the ratio is some weird value
         _ratio_list = np.array(ratio_list)
         _ratio_list = _ratio_list / np.sum(_ratio_list)
-        # generate a new canvas and a new mask
-        _canvas = np.ones((*self._canvas_size,3), dtype="uint8")*255
-        _mask = np.zeros(self._canvas_size, dtype = "uint8")
+        # generate a larger canvas and a larger mask
+        _canvas = np.full(shape = (self._canvas_size[0]*2, self._canvas_size[0]*2,3),
+                          fill_value = 255,
+                          dtype="uint8")
+        _mask = np.zeros((self._canvas_size[0]*2, self._canvas_size[0]*2), dtype = "uint8")
 
         #for each iteration
         for _num_count in tqdm(np.arange(item_num), desc = "Generating...", leave = True):
@@ -324,7 +379,6 @@ class collage_generator(object):
             else:
               # choose a random images
               _img = _image_list[np.random.randint(len(_image_list))]
-              # randomly transform it
               _img_transformed = self.datagen.random_transform(_img)
               # append it to the canvas
               _canvas, _mask = self.try_insert(img = _img_transformed,
@@ -333,17 +387,28 @@ class collage_generator(object):
                                                label = self.label_dict[self.label_list[_class_add]],
                                                patience = self.patience)
 
-
-        # get a background color by extracting the mode
-        _color= mode(self.example_img, axis = 0)[0][0][0]
+        if (background_color):
+            # get a background color by extracting the mode
+            _color = (mode(self.example_img, axis = 0)[0][0][0] + (np.random.randn(3)*5)).astype(int)
+        else:
+            # generate a white one
+            _color = np.array([255,255,255], dtype = "uint8")
         # create a color backgound of this color
-        _color_background = np.multiply(np.ones(shape = (*_mask.shape,3)), _color).astype(int)
-        # clip the value between 0 and 255
-        _color_background = np.clip(_color_background, a_min = 0, a_max = 255)
-        # apply the color to image
+        _color_background = np.multiply(np.ones(shape = _canvas.shape), _color).astype(int)
+        # apply the background color to image
         _canvas[_mask == 0] = _color_background[_mask == 0]
-        # add a gaussian noise
-        _canvas = _canvas + (np.random.randn(*(_canvas.shape))*self.gaussian_noise_constant)
-        _canvas = np.clip(_canvas, a_min = 0, a_max = 255).astype(int)
 
-        return _canvas, _mask, self.label_dict
+        # add a gaussian noise to non-white area
+        if (background_color):
+            _canvas = _canvas + (np.random.randn(*(_canvas.shape))*self.gaussian_noise_constant)
+        else:
+            _canvas[_mask != 0] = _canvas[_mask != 0] + np.random.randn(*(_canvas[_mask != 0].shape))*self.gaussian_noise_constant
+
+        _cutbound_x = (int(self.canvas_size[0]/2),int(self.canvas_size[0]/2)+self.canvas_size[0])
+        _cutbound_y = (int(self.canvas_size[1]/2),int(self.canvas_size[1]/2)+self.canvas_size[1])
+        _cut_canvas = _canvas[_cutbound_x[0]:_cutbound_x[1],_cutbound_y[0]:_cutbound_y[1]]
+        #make sure the output value is legal
+        _cut_canvas = np.clip(_cut_canvas, a_min = 0, a_max = 255).astype(int)
+        _cut_mask = _mask[_cutbound_x[0]:_cutbound_x[1],_cutbound_y[0]:_cutbound_y[1]]
+
+        return _cut_canvas, _cut_mask, self.label_dict
