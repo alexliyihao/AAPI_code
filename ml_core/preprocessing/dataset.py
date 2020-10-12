@@ -62,7 +62,7 @@ class Dataset(torch.utils.data.Dataset):
         # TODO: see original UNet paper to find out new ways of adding edge weights
         if self.use_edge_mask:
             binary_mask = np.array((mask != 0) * 255, dtype=np.uint8)
-            edge_mask = cv2.Canny(binary_mask, 100, 200)
+            edge_mask = cv2.Canny(binary_mask, 100, 200) / 255
         else:  # otherwise the edge weight is all ones and thus has no affect
             edge_mask = np.ones(mask.shape, dtype=mask.dtype)
 
