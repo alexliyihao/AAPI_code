@@ -3,7 +3,7 @@ import torch
 from matplotlib import pyplot as plt
 import numpy as np
 import tables
-from scipy.ndimage.morphology import binary_dilation
+import cv2
 
 
 class Dataset(torch.utils.data.Dataset):
@@ -60,7 +60,8 @@ class Dataset(torch.utils.data.Dataset):
         # highlight all the pixels which were "added"
         # TODO: see original UNet paper to find out new ways of adding edge weights
         if self.use_edge_mask:
-            edge_mask = binary_dilation(mask == 1, iterations=2) & ~mask
+            binary_mask = np.array((mask != 0) * 255, dtype=np.uint8)
+            edge_mask = cv2.Canny(binary_mask, 100, 200)
         else:  # otherwise the edge weight is all ones and thus has no affect
             edge_mask = np.ones(mask.shape, dtype=mask.dtype)
 
@@ -105,9 +106,9 @@ def visualize_one_sample(dataset: Dataset, index: int, positive_only=False):
 
     axes[0].imshow(img.reshape(*img.shape[:2], img.shape[2]))
     axes[0].set_title("image")
-    axes[1].imshow(mask, cmap="gray")
+    axes[1].imshow(mask)
     axes[1].set_title("mask")
-    axes[2].imshow(edge_mask, cmap="gray")
+    axes[2].imshow(edge_mask)
     axes[2].set_title("edge_mask")
 
     for ax in axes:
