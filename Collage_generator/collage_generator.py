@@ -36,6 +36,7 @@ class collage_generator(object):
           image_data_generator:
             keras.image.imagedatagenerator object, if not None, will replace the default one
         """
+        super(collage_generator, self).__init__()
         assert len(canvas_size) == 2
         self.label_list = label_list
         self.label_dict = dict(zip(label_list, range(1, len(label_list)+1)))
@@ -369,7 +370,7 @@ class collage_generator(object):
         _mask = np.zeros((self._canvas_size[0]*2, self._canvas_size[0]*2), dtype = "uint8")
 
         #for each iteration
-        for _num_count in tqdm(np.arange(item_num), desc = "Generating...", leave = True):
+        for _num_count in tqdm(np.arange(item_num), desc = "Generating...", leave = False):
             # generate a random class from the distribution
             _class_add = self._multinomial_distribution(_ratio_list)
             # find the image_list for this class
