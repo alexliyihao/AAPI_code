@@ -1,4 +1,5 @@
 import torch
+import torchvision
 
 from matplotlib import pyplot as plt
 import numpy as np
@@ -66,7 +67,7 @@ class Dataset(torch.utils.data.Dataset):
             edge_mask = np.ones(mask.shape, dtype=mask.dtype)
 
         # transform to torch.tensor
-        img = torch.tensor(img, dtype=torch.float32) / 255
+        img = torchvision.transforms.ToTensor()(img)
         mask = torch.tensor(mask, dtype=torch.long)
         edge_mask = torch.tensor(edge_mask, dtype=torch.float32)
         return img, mask, edge_mask
