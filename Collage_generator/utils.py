@@ -45,7 +45,7 @@ def import_git_images():
     image_list: 2D list of RGB np.ndarray, each label will have a individual list
     class_name_list: 1D list of string, number of label
   """
-  _import_path = os.path.join(os.getcwd(), "AAPI_code/vignettes")
+  _import_path = os.path.join(os.getcwd(), "vignettes")
   _label_list = []
   _image_list = []
   for i in os.listdir(_import_path):
