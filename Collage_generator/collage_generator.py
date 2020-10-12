@@ -5,7 +5,8 @@ from keras.preprocessing.image import ImageDataGenerator
 from tqdm.notebook import tqdm
 from scipy.stats import mode
 from typing import List, Dict, Tuple
-
+import tables
+import time
 
 class collage_generator(object):
 
@@ -185,7 +186,7 @@ class collage_generator(object):
             while (not size_okay):
                 # resize it and preview
                 np_img = np.array(read_in.resize(size))
-                plt.imshow(self.single_image_preview(np_img,
+                plt.imshow(self._single_image_preview(np_img,
                                                     canvas_size = self.canvas_size))
                 plt.show()
                 # check if original size okay
@@ -213,7 +214,7 @@ class collage_generator(object):
         self.image_list[self.label_dict[label]-1].append(np_img)
         print(f'image succesfully added to label "{label}" with size {size}')
 
-    def single_image_preview(self, img: np.ndarray, canvas_size: Tuple[int,int] = (1,1)):
+    def _single_image_preview(self, img: np.ndarray, canvas_size: Tuple[int,int] = (1,1)):
         """
         generate a size preview for single image vs canvas size
         input:
@@ -225,12 +226,12 @@ class collage_generator(object):
         canvas = np.full(shape =(*self.canvas_size,3),
                          fill_value = 255,
                          dtype="uint8")
-        canvas = self.canvas_append(canvas = canvas,
+        canvas = self._canvas_append(canvas = canvas,
                                     add_point = (0,0),
                                     img = img)
         return canvas
 
-    def canvas_append(self,
+    def _canvas_append(self,
                       canvas: np.ndarray,
                       add_point: np.ndarray,
                       img: np.ndarray,
@@ -270,7 +271,7 @@ class collage_generator(object):
                 mask[add_point[0]+x, add_point[1]+y] = mask_label
           return canvas, mask
 
-    def try_insert(self,
+    def _try_insert(self,
                    img: np.ndarray,
                    canvas: np.ndarray,
                    mask: np.ndarray,
@@ -319,7 +320,7 @@ class collage_generator(object):
             continue
           # otherwise add the img to canvas and mask and stop retry
           else:
-            canvas, mask = self.canvas_append(canvas = canvas,
+            canvas, mask = self._canvas_append(canvas = canvas,
                                               add_point = _add_point,
                                               img = img,
                                               mask = mask,
@@ -327,7 +328,7 @@ class collage_generator(object):
             break
       return canvas, mask
 
-    def multinomial_distribution(self, prob_distribution):
+    def _multinomial_distribution(self, prob_distribution):
         """
         Just a wrapper, I don't even know np and scipy's multinomial sampling is that weird...
         input:
@@ -341,7 +342,8 @@ class collage_generator(object):
     def generate(self,
                  item_num: int = 200,
                  ratio_list: List[float] = [1.0,0.0],
-                 background_color = False
+                 background_color = False,
+                 return_dict = True
                  ):
         """
         the method to generate a new 3-channel collage and a mask
@@ -349,7 +351,7 @@ class collage_generator(object):
           item_num: int, the total number of items in this image
           ratio_list: list[float], the ratio of each cass, the number must be same to the labels
           background_color: bool, if True, will add a background color based on self.example_image
-
+          return_dict: bool, if true, will return the dictionary of the generator
         return:
           _canvas: np.ndarray, self._canvas_size shape, 3 channel, the canvas with images added
           _mask, np.ndarray, self._canvas_size shape, 1 channel, the mask of the canvas
@@ -369,7 +371,7 @@ class collage_generator(object):
         #for each iteration
         for _num_count in tqdm(np.arange(item_num), desc = "Generating...", leave = True):
             # generate a random class from the distribution
-            _class_add = self.multinomial_distribution(_ratio_list)
+            _class_add = self._multinomial_distribution(_ratio_list)
             # find the image_list for this class
             _image_list = self.image_list[_class_add]
             # if the class is empty, skip
@@ -381,7 +383,7 @@ class collage_generator(object):
               _img = _image_list[np.random.randint(len(_image_list))]
               _img_transformed = self.datagen.random_transform(_img)
               # append it to the canvas
-              _canvas, _mask = self.try_insert(img = _img_transformed,
+              _canvas, _mask = self._try_insert(img = _img_transformed,
                                                canvas = _canvas,
                                                mask = _mask,
                                                label = self.label_dict[self.label_list[_class_add]],
@@ -410,5 +412,96 @@ class collage_generator(object):
         #make sure the output value is legal
         _cut_canvas = np.clip(_cut_canvas, a_min = 0, a_max = 255).astype(int)
         _cut_mask = _mask[_cutbound_x[0]:_cutbound_x[1],_cutbound_y[0]:_cutbound_y[1]]
+        if return_dict:
+            return _cut_canvas, _cut_mask, self.label_dict
+        else:
+            return _cut_canvas, _cut_mask
 
-        return _cut_canvas, _cut_mask, self.label_dict
+    def generate_hdf5(self,
+                      hdf5_dataset_fname: str = "save.h5",
+                      length: int = 20,
+                      item_num: int = 200,
+                      vignettes_ratio_list: List[float] = [1.0,0.0],
+                      background_color_ratio: float = 1.0):
+        """
+        a wrapper saving generated patches to hdf5 file, in current setting
+        it will be saved into 4 different hdf5_file
+
+        hdf5_dataset_fname: the example h5 filename, can be with or without .h5 extension
+        length: int, the number of image generated
+        item_num: int, most of time don't really need to work with
+        vignettes_ratio_list: list of float, the ratio of each cass,
+                                the number must be same to the labels.
+                                but don't have to sum to 1
+        background_color_ratio: float, the probability of images generated are with backgound color
+
+        generating:
+           hdf5 file, image with binary mask for each class specified in the file name.
+        """
+        assert length > 0
+        assert 0 <= background_color_ratio <= 1
+        if hdf5_dataset_fname[-3:] == '.h5':
+            hdf5_dataset_fname = hdf5_dataset_fname[:-3]
+
+        # generate enough collage and mask
+        _collage_list = []
+        _mask_list = []
+        for _ctr in tqdm(range(length), desc = "generating...", leave = False):
+            _collage, _mask= self.generate(ratio_list = vignettes_ratio_list,
+                                           background_color = \
+                                           np.random.binomial(size=1,
+                                                              n=1,
+                                                              p=background_color_ratio)[0],
+                                           return_dict = False
+                                           )
+            _collage_list.append(_collage)
+
+            _mask_list.append(_mask)
+
+        _collage_list = np.stack(_collage_list, axis = 0)
+        _mask_list = np.stack(_mask_list, axis = 0)
+
+        _img_dtype = tables.UInt8Atom()
+        _filename_dtype = tables.StringAtom(itemsize=255)
+        _img_shape = (*self.canvas_size, 3)
+        _mask_shape = self.canvas_size # mask is just a 2D matrix
+
+        for label in tqdm(self.label_list, desc = "saving...", leave = False):
+            # if use later version maybe save by _mask_list is more space-efficient
+            _sub_mask_list = np.where(_mask_list == self.label_dict[label], 1, 0)
+            with tables.open_file(f"{hdf5_dataset_fname}_{label}.h5", mode='w') as _hdf5_file:
+
+                # use blosc compression
+                filters = tables.Filters(complevel=1, complib='blosc')
+
+                # filenames, images, masks are saved as three separate
+                # earray in the hdf5 file tree
+
+                _src_img_fnames = _hdf5_file.create_earray(
+                    _hdf5_file.root,
+                    name="src_image_fname",
+                    atom=_filename_dtype,
+                    shape=(0, ))
+
+                _img_array = _hdf5_file.create_earray(
+                    _hdf5_file.root,
+                    name="img",
+                    atom=_img_dtype,
+                    shape=(0, *_img_shape),
+                    chunkshape=(1, *_img_shape),
+                    filters=filters)
+
+                _mask_array = _hdf5_file.create_earray(
+                    _hdf5_file.root,
+                    name="mask",
+                    atom=_img_dtype,
+                    shape=(0, *_mask_shape),
+                    chunkshape=(1, *_mask_shape),
+                    filters=filters)
+
+                # append newly created patches for every pair image and mask
+                # and flush them incrementally to the hdf5 file
+                _img_array.append(_collage_list)
+                _mask_array.append(_sub_mask_list)
+                _src_img_fnames.append([f'collage_generator_{time.strftime("%Y-%m-%d")}_{i}' \
+                                        for i in range(_collage_list.shape[0])])
