@@ -157,11 +157,12 @@ def extract_mask_patches(mask_path: Union[Path, str],
     -------
 
     """
-    # TODO: how to effectively deal with multi-class annotation labels?
-    # currently just change value from {0, 255} to {0, 1}
-    # also make sure that input mask has three channels
+    # make sure that input mask has three channels
+    # and labels for every class is represented as a uint8 label
     mask_path = str(mask_path)
-    mask = cv2.imread(mask_path) // 255
+    mask = cv2.imread(mask_path)  # load as uint8 labels
+    assert mask.dtype == np.uint8, \
+        f"Only supports uint8 labels, but the current dtype for mask {mask_path} is {mask.dtype}"
 
     # want to use nearest;
     # otherwise resizing may cause non-existing classes
@@ -195,7 +196,10 @@ def crop_and_save_patches_to_hdf5(hdf5_dataset_fname, images, masks, extractor: 
     images : List[str] or List[Path]
         list of paths to image files
     masks : List[str] or List[Path]
-        list of paths to mask files
+        list of paths to mask files;
+        note that the mask can contain multiple classes,
+        every unique non-zero value stands for a unique class.
+        Currently the mapping is {tubules:1, artery:2, glomerulus:3, arteriole:4}
     extractor : Extractor
         instance of Extractor class, containing extraction parameters
 
