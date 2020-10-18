@@ -3,6 +3,9 @@ from shapely.geometry import Polygon
 from shapely.affinity import affine_transform
 import cv2
 import numpy as np
+from pandas import DataFrame
+from PIL import ImageColor
+from typing import Union
 
 
 class ASAPAnnotation:
@@ -60,7 +63,7 @@ class ASAPAnnotation:
         return annotation_xml
 
     @staticmethod
-    def generate_annotation_groups(annotations, parent_group_name=None, group_color=None):
+    def generate_annotation_groups(annotations, parent_group_name=None):
         """
         Generate xml for annotation groups using a list of annotations.
         Group names are extracted from ASAPAnnotation.group_name attribute.
@@ -71,20 +74,20 @@ class ASAPAnnotation:
             list of annotations
         parent_group_name : str or None
             Currently only support one layer of ancestor for every group
-        group_color : str, HEX code for color, starts with #
-            color used when rendered on ASAP frontend
+
         Returns
         -------
         annotation_groups : List[etree.Element]
             list of xmls for annotation groups
         """
-        if group_color is None:
-            group_color = annotations[0].render_color
-
         unique_groups = set([a.group_name for a in annotations])
         annotation_groups = []
 
         for group_name in unique_groups:
+            # use the color of first annotation in each group
+            first_annotation = next(filter(lambda a: a.group_name == group_name, annotations))
+            group_color = first_annotation.render_color
+
             group_xml = etree.Element("Group",
                                       Name=group_name,
                                       PartOfGroup=str(parent_group_name),
@@ -111,7 +114,11 @@ def write_xml_to_file(filename, xml_node):
     tree.write(filename, pretty_print=True, xml_declaration=True, encoding="utf-8")
 
 
-def load_asap_annotations_from_xml(xml_path):
+def _hex_to_rgb(hex_code: str):
+    return ImageColor.getcolor(hex_code, "RGB")
+
+
+def load_annotations_from_asap_xml(xml_path):
     """
     Deserialize annotations into custom data structures from xml file
     Parameters
@@ -125,7 +132,7 @@ def load_asap_annotations_from_xml(xml_path):
 
     """
     with open(xml_path) as f:
-        res = f.read()
+        res = f.read().encode("utf-8")
 
     root = objectify.fromstring(res)
 
@@ -157,21 +164,107 @@ def load_asap_annotations_from_xml(xml_path):
     return asap_annotations
 
 
-def annotation_to_mask(annotations, label_info, mask_shape, upper_left_coordinates):
+def load_annotations_from_halo_xml(xml_path):
     """
-    Convert a polygon or multipolygon list back to an image mask ndarray
+    Deserialize annotations into custom data structures from xml file (HALO format)
+    Parameters
+    ----------
+    xml_path : Path or str
+        path to ASAP format xml annotation file
+    Returns
+    -------
+    asap_annotations : List[ASAPAnnotations]
+        list of ASAPAnnotations after deserialization
 
+    """
+    with open(xml_path) as f:
+        res = f.read().encode("utf-8")
+
+    root = objectify.fromstring(res)
+
+    annotation_groups = root.getchildren()
+
+    asap_annotations = []
+    for annotation_group in annotation_groups:
+        group_name = annotation_group.get("Name")
+        line_color = annotation_group.get("LineColor")
+        group_color = "#{:06x}".format(int(line_color))
+
+        regions = annotation_group.Regions.getchildren()
+        for i, region in enumerate(regions):
+            xy_coordinates = [(int(v.get("X")), int(v.get("Y")))
+                              for v in region.Vertices.getchildren()]
+
+            asap_annotation = ASAPAnnotation(geometry=Polygon(xy_coordinates),
+                                             annotation_name=f"{group_name}_{i}",
+                                             group_name=group_name,
+                                             render_color=group_color)
+
+            asap_annotations.append(asap_annotation)
+
+    return asap_annotations
+
+
+def create_asap_annotation_file(annotations, filename):
+    """
+    Dump list of annotations to file
     Parameters
     ----------
     annotations : List[ASAPAnnotation]
         list of annotations
-    label_name_to_id
-    mask_shape
-    upper_left_coordinates
+    filename : PosixPath or str
+        path to the target file
+
+    """
+    annotation_xmls = list(map(lambda x: x.to_xml(), annotations))
+    group_xmls = ASAPAnnotation.generate_annotation_groups(annotations)
+
+    root = etree.Element("ASAP_Annotations")
+    annotation_root = etree.SubElement(root, "Annotations")
+    annotation_group_root = etree.SubElement(root, "AnnotationGroups")
+
+    list(map(lambda x: annotation_root.append(x), annotation_xmls))
+    list(map(lambda x: annotation_group_root.append(x), group_xmls))
+
+    write_xml_to_file(str(filename), root)
+
+
+def annotation_to_mask(annotations,
+                       label_info,
+                       upper_left_coordinates,
+                       mask_shape,
+                       level,
+                       level_factor=4):
+    """
+    Convert a polygon or multipolygon list back to an image mask ndarray;
+    useful for training segmentation models
+
+    Parameters
+    ----------
+    annotations : List[ASAPAnnotation]
+        list of annotations with custom data structure
+    label_info : DataFrame
+        pandas DataFrame describing mappings from label id to label class name, color
+        must contain the following three columns:
+            1) label: int, id for this class
+            2) label_name: str, class name for this class
+            3) color: str, 6 digit hex code starts with "#",
+                      describing the rendering color for the class
+    upper_left_coordinates : tuple(float, float)
+        coordinate of upper left point of the mask,
+        defined in level-0 coordinate system of original slide
+    mask_shape : tuple
+        the exact shape of output mask, can be 2D or 3D;
+        (not the original shape in slides, as the output level may not be level-0)
+    level : int
+        custom level to generate annotations, higher level indicates lower resolution
+    level_factor : int
+        downsampling factor between every two adjacent levels
 
     Returns
     -------
-
+    img_mask : np.array
+        generated mask using uint8 labels, with shape (mask_shape[0], mask_shape[1], 3)
     """
 
     if mask_shape[-1] != 3 and len(mask_shape) == 2:
@@ -179,6 +272,7 @@ def annotation_to_mask(annotations, label_info, mask_shape, upper_left_coordinat
         mask_shape = [*mask_shape, 3]
 
     upper_left_x, upper_left_y = upper_left_coordinates
+    ds_rate = level_factor ** level
     img_mask = np.zeros(mask_shape, np.uint8)
 
     for label_row in label_info.itertuples():
@@ -187,7 +281,8 @@ def annotation_to_mask(annotations, label_info, mask_shape, upper_left_coordinat
 
         polygons = [a.geometry for a in annotations if label_name == a.group_name]
         # see https://shapely.readthedocs.io/en/latest/manual.html#affine-transformations
-        transform_matrix = [1, 0, 0, 1, -upper_left_x, -upper_left_y]
+        transform_matrix = [1/ds_rate, 0, 0, 1/ds_rate,
+                            -upper_left_x/ds_rate, -upper_left_y/ds_rate]
         polygons = list(map(lambda p: affine_transform(p, transform_matrix), polygons))
 
         # function to round and convert to int
@@ -201,19 +296,42 @@ def annotation_to_mask(annotations, label_info, mask_shape, upper_left_coordinat
     return img_mask
 
 
-def mask_to_annotation(mask, label_info, upper_left_coordinates, min_area=10):
+def mask_to_annotation(mask,
+                       label_info,
+                       upper_left_coordinates,
+                       level,
+                       level_factor=4,
+                       min_area=10):
     """
-    Convert a mask ndarray (binarized image) to Multipolygons
-    See Also: https://michhar.github.io/masks_to_polygons_and_back/
+    Convert a mask (uint8 array-like) to list of annotations,
+    in order to render on ASAP frontend
+    Inspired from: https://michhar.github.io/masks_to_polygons_and_back/
+
     Parameters
     ----------
-    mask
-    label_info
-    upper_left_coordinates
+    mask : 3D np.array or PIL image
+        uint8 numpy array mask, each unique label id stands for a unique class
+    label_info : DataFrame
+        pandas DataFrame describing mappings from label id to label class name, color
+        must contain the following three columns:
+            1) label: int, id for this class
+            2) label_name: str, class name for this class
+            3) color: str, 6 digit hex code starts with "#",
+                      describing the rendering color for the class
+    upper_left_coordinates : tuple(float, float)
+        coordinate of upper left point of the mask,
+        defined in level-0 coordinate system of original slide
+    level : int
+        custom level to generate annotations, higher level indicates lower resolution
+    level_factor : int
+        downsampling factor between every two adjacent levels
+    min_area : int
+        polygons with area smaller than min_area will be ignored for generating annotations
 
     Returns
     -------
-
+    annotations: List[ASAPAnnotation]
+        list of annotations with custom data structure
     """
 
     def mask_to_polygon(binary_mask):
@@ -236,6 +354,7 @@ def mask_to_annotation(mask, label_info, upper_left_coordinates, min_area=10):
 
     annotations = []
     upper_left_x, upper_left_y = upper_left_coordinates
+    ds_rate = level_factor ** level
 
     mask_2d = np.array(mask)[..., 0]
     for label_row in label_info.itertuples():
@@ -248,7 +367,7 @@ def mask_to_annotation(mask, label_info, upper_left_coordinates, min_area=10):
         polygons = mask_to_polygon(binary_mask)
         if polygons is not None:
             # apply reverse transformation to original coordinates
-            transform_matrix = [1, 0, 0, 1, upper_left_x, upper_left_y]
+            transform_matrix = [ds_rate, 0, 0, ds_rate, upper_left_x, upper_left_y]
             polygons = map(lambda p: affine_transform(p, transform_matrix), polygons)
 
             label_name = label_row.label_name
@@ -260,15 +379,29 @@ def mask_to_annotation(mask, label_info, upper_left_coordinates, min_area=10):
     return annotations
 
 
-def create_annotation_file(annotations, filename):
-    annotation_xmls = list(map(lambda x: x.to_xml(), annotations))
-    group_xmls = ASAPAnnotation.generate_annotation_groups(annotations)
+def generate_colorful_mask(mask, label_info):
+    """
+    Visualize mask in a colorful manner;
+    rendering color is derived from label_info dataframe
 
-    root = etree.Element("ASAP_Annotations")
-    annotation_root = etree.SubElement(root, "Annotations")
-    annotation_group_root = etree.SubElement(root, "AnnotationGroups")
+    Parameters
+    ----------
+    mask : np.array
+        mask containing uint8 type labels
+    label_info : DataFrame
+        pandas DataFrame, containing mappings of label id to color
 
-    list(map(lambda x: annotation_root.append(x), annotation_xmls))
-    list(map(lambda x: annotation_group_root.append(x), group_xmls))
+    Returns
+    -------
+    colorful_mask : np.array
+        each label is visualized using a unique color
 
-    write_xml_to_file(filename, root)
+    """
+    colorful_mask = np.copy(mask)
+    mask_2d = mask[..., 0] if len(mask.shape) == 3 else mask
+
+    for row in label_info.itertuples():
+        label, color = row.label, row.color
+        colorful_mask[mask_2d == label] = _hex_to_rgb(color)
+
+    return colorful_mask
