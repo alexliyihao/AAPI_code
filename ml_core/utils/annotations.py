@@ -291,7 +291,7 @@ def annotation_to_mask(annotations,
         interiors = [round_coords(pi.coords) for poly in polygons
                      for pi in poly.interiors]
         cv2.fillPoly(img_mask, interiors, 0)
-        cv2.fillPoly(img_mask, exteriors, label_row.label)
+        cv2.fillPoly(img_mask, exteriors, [label_row.label]*3) # all three channels should be assigned
 
     return img_mask
 
