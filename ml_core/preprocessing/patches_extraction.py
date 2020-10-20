@@ -1,5 +1,6 @@
 from typing import Union, List
 from pathlib import Path
+import configparser
 
 import tables
 from PIL import Image
@@ -18,10 +19,12 @@ class Extractor:
     """
 
     def __init__(self,
-                 resize: float,
-                 mirror_pad_size: int,
-                 patch_size: int,
-                 stride_size: int):
+                 resize: float = 0.125,
+                 mirror_pad_size: int = 128,
+                 patch_size: int = 256,
+                 stride_size: int = 64,
+                 normalize_mask: bool = False,
+                 config_section_name: str = None):
         """
         Configure the extractor with specific size arguments;
 
@@ -40,12 +43,34 @@ class Extractor:
             for now only square patches are extracted
         stride_size : int
             stride used in patches extraction
+        normalize_mask : bool
+            reshape the mask to add the third channel and rescale our labels to
+            continuous integers, i.e, from 0 to len(unique_labels)-1.
+        config_section_name : str
+            section name in config file "extractor_param.ini";
+            if not None (default value), it will be used to initialize the extractor,
+            ignoring all the above input arguments
         """
+        if config_section_name is None:
+            self.resize = resize
+            self.mirror_pad_size = mirror_pad_size
+            self.patch_size = patch_size
+            self.stride_size = stride_size
+            self.normalize_mask = normalize_mask
 
-        self.resize = resize
-        self.mirror_pad_size = mirror_pad_size
-        self.patch_size = patch_size
-        self.stride_size = stride_size
+        else:
+            config = configparser.ConfigParser()
+            config.read(Path(__file__).parent / "extractor_param.ini")
+
+            assert config_section_name in config, f"{config_section_name} is not a valid section name.\n" \
+                                                  f"Valid sections: {config.sections()}"
+            section = config[config_section_name]
+
+            self.resize = section.getfloat("resize")
+            self.mirror_pad_size = section.getint("mirror_pad_size")
+            self.patch_size = section.getint("patch_size")
+            self.stride_size = section.getint("stride_size")
+            self.normalize_mask = section.getboolean("normalize_mask")
 
     def extract_patches(self, img, interp_method=Image.BICUBIC) -> ndarray:
         """
@@ -161,8 +186,29 @@ def extract_mask_patches(mask_path: Union[Path, str],
     # and labels for every class is represented as a uint8 label
     mask_path = str(mask_path)
     mask = cv2.imread(mask_path)  # load as uint8 labels
+    unique_labels = np.unique(np.array(mask))
+
+    if extractor.normalize_mask:
+        # rescale labels
+        if np.max(unique_labels) != len(unique_labels) - 1:
+            label_mappings = {old_label: new_label for new_label, old_label in enumerate(unique_labels)}
+            for old_label in label_mappings:
+                new_label = label_mappings[old_label]
+                if old_label != new_label:
+                    mask[mask == old_label] = new_label
+
+        # reshape mask to 3D
+        if len(mask.shape) == 2:
+            mask = np.repeat(mask[:, np.newaxis], 3, axis=2)
+
     assert mask.dtype == np.uint8, \
         f"Only supports uint8 labels, but the current dtype for mask {mask_path} is {mask.dtype}"
+
+    assert len(mask.shape) == 3 and mask.shape[-1] == 3, \
+        f"Mask must also have three channels. Current mask {mask_path} has shape {mask.shape}."
+
+    assert mask.max() == len(unique_labels) - 1, \
+        f"Labels are not continuous integer from 0 to {len(unique_labels) - 1}; Max: {mask.max()}"
 
     # want to use nearest;
     # otherwise resizing may cause non-existing classes
