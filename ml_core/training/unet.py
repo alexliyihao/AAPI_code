@@ -3,11 +3,17 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
+from torch.optim import Adam
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+import pytorch_lightning as pl
+from pytorch_lightning.metrics.functional import f1_score
 
 
-class UNet(nn.Module):
+class UNet(pl.LightningModule):
     def __init__(self, in_channels=1, n_classes=2, depth=5, wf=6, padding=False,
-                 batch_norm=False, up_mode='upconv'):
+                 batch_norm=False, up_mode='upconv',
+                 **train_kwargs
+                 ):
         """
         Implementation of
         U-Net: Convolutional Networks for Biomedical Image Segmentation
@@ -16,6 +22,8 @@ class UNet(nn.Module):
 
         Using the default arguments will yield the exact version used
         in the original paper
+
+        Refactored using pytorch lightning, but is still compatible with pytorch
 
         Args:
             in_channels (int): number of input channels
@@ -32,10 +40,11 @@ class UNet(nn.Module):
                            learned upsampling.
                            'upsample' will use bilinear upsampling.
         """
-        super(UNet, self).__init__()
+        super().__init__()
         assert up_mode in ('upconv', 'upsample')
         self.padding = padding
         self.depth = depth
+        self.n_classes = n_classes
         prev_channels = in_channels
         self.down_path = nn.ModuleList()
         for i in range(depth):
@@ -51,6 +60,20 @@ class UNet(nn.Module):
 
         self.last = nn.Conv2d(prev_channels, n_classes, kernel_size=1)
 
+        self.train_kwargs = train_kwargs
+
+        self.optimizer = self.train_kwargs.get("optimizer",
+                                               [Adam(params=self.parameters(), lr=1e-3)])
+        self.scheduler = self.train_kwargs.get("scheduler",
+                                               [ReduceLROnPlateau(opt, factor=0.1, patience=25)
+                                                for opt in self.optimizer])
+        self.scheduler = [{
+            'scheduler': lr_scheduler,
+            'reduce_on_plateau': True,
+            'monitor': 'val/loss'} for lr_scheduler in self.scheduler]
+        self.criterion = self.train_kwargs.get("criterion", nn.CrossEntropyLoss(reduction="none"))
+        self.edge_weight = self.train_kwargs.get("edge_weight", 1.)
+
     def forward(self, x):
         blocks = []
         for i, down in enumerate(self.down_path):
@@ -63,6 +86,49 @@ class UNet(nn.Module):
             x = up(x, blocks[-i-1])
 
         return self.last(x)
+
+    def configure_optimizers(self):
+        return self.optimizer, self.scheduler
+
+    def __shared_step_op(self, batch, batch_idx, phase, log=True):
+        img, mask, edge_mask = batch
+        output = self.forward(img)
+        loss_matrix = self.criterion(output, mask)
+        loss = (loss_matrix * (self.edge_weight ** edge_mask)).mean()
+
+        output_labels = torch.argmax(output, dim=1).view(-1)
+        ground_truths = mask.view(-1)
+        f1 = f1_score(output_labels,
+                      ground_truths,
+                      num_classes=self.n_classes,
+                      class_reduction='macro')
+
+        if log:
+            self.log(f"{phase}/loss", loss, prog_bar=True)
+            self.log(f"{phase}/f1_score", f1, prog_bar=True)
+
+        return {f"{phase}_loss": loss, f"{phase}_f1_score": f1}
+
+    def training_step(self, batch, batch_idx):
+        res = self.__shared_step_op(batch, batch_idx, "train")
+        return res["train_loss"]
+
+    def validation_step(self, batch, batch_idx):
+        res = self.__shared_step_op(batch, batch_idx, "val")
+        return res
+
+    def test_step(self, batch, batch_idx):
+        res = self.__shared_step_op(batch, batch_idx, "test")
+        return res
+
+    def __shared_epoch_op(self, outputs, phase):
+        pass
+
+    def validation_epoch_end(self, outputs):
+        return self.__shared_epoch_op(outputs, "val")
+
+    def test_epoch_end(self, outputs):
+        return self.__shared_epoch_op(outputs, "test")
 
 
 class UNetConvBlock(nn.Module):
