@@ -339,6 +339,55 @@ class collage_generator(object):
         """
         return np.nonzero(np.random.multinomial(1,prob_distribution))[0][0]
 
+    def generate_background(self,
+                            canvas_size,
+                            scanning_size = (50,50),
+                            sample_threshold = 0.2,
+                            offset_const = 10,
+                            gaussian_variance = 0.01,
+                            filter_size = 3):
+        # the sampling is based on a grid-scanning scheme, we made some randomness on the grid scanning
+        scan_sample = np.ceil(np.true_divide(self.example_img.shape[:2],scanning_size)).astype(int)
+        non_zero_list = []
+        # for the randomness, make some retry
+        for offset in tqdm([(scanning_size[0]//offset_const*ratio,scanning_size[1]//offset_const*ratio) for ratio in range(offset_const)],
+                           desc = "sampling",
+                           leave = False):
+          #search the grid
+          for i in range(scan_sample[0]):
+            for j in range(scan_sample[1]):
+              # find the starting point, add some turbulence to the sample
+              x = int(np.random.normal(loc = i, scale = gaussian_variance)*scanning_size[0]) + offset[0]
+              y = int(np.random.normal(loc = j, scale = gaussian_variance)*scanning_size[1]) + offset[1]
+              scanning_area = self.example_img[y : np.min((self.example_img.shape[1],y + scanning_size[1])),
+                                               x : np.min((self.example_img.shape[0],x + scanning_size[0]))]
+              # if the nonzero-area ratio is greater than the thereshold
+              if np.sum(np.any(scanning_area, axis = 2))/(scanning_size[0]*scanning_size[1]) > sample_threshold:
+                # sample it, crop possible additional black pad
+                non_zero_list.append(crop_image(scanning_area))
+
+        canvas = np.zeros((*canvas_size,3))
+        # do something similar, add the image to grid
+        scan_add = np.ceil(np.true_divide(canvas_size,scanning_size)).astype(int)
+        # for this time we will pile the images for several layers, with some specific offset
+        for offset in tqdm([(scanning_size[0]//offset_const*ratio,scanning_size[1]//offset_const*ratio) for ratio in range(offset_const)],
+                           desc = "generating",
+                           leave = False):
+          for i in range(scan_add[0]):
+            for j in range(scan_add[1]):
+              # when adding the image still provide some randomness
+              add_point = (int(np.random.normal(loc = j, scale = gaussian_variance)*scanning_size[1])+offset[1],
+                          int(np.random.normal(loc = i, scale = gaussian_variance)*scanning_size[0])+offset[0])
+              try:
+                canvas = add(canvas, datagen.random_transform(non_zero_list[np.random.randint(len(non_zero_list))]), add_point)
+              except:
+                continue
+        #convert all the black part to white
+        canvas = np.where(canvas == 0, 255, canvas)
+        # give it a filter to eliminate the clear edge
+        filtered = Img.fromarray(canvas.astype("uint8")).filter(ImageFilter.MedianFilter(size = filter_size))
+        filtered = np.array(filtered.filter(ImageFilter.MedianFilter(size = filter_size)), dtype = "uint8")
+        return filtered
 
     def generate(self,
                  item_num: int = 200,
