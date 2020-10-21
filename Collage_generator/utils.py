@@ -86,3 +86,13 @@ def visualize_result(collage, mask, dictionary):
     plt.legend(handles=_patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0 )
     plt.show()
     print(dictionary)
+
+def extract_binary_mask(mask, dictionary):
+    """
+    convert a integer mask to multi-channel binary mask
+    arg:
+        mask, dictionary: output of col_gen.generate() method
+    return:
+        np.ndarray, the binary mask in different channel
+    """
+    return np.stack([np.where(mask == i, 1, 0)for i in list(dictionary.values())], axis=-1)
