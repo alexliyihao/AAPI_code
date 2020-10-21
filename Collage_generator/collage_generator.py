@@ -636,8 +636,8 @@ class collage_generator(object):
                                               patience = self.patience)
 
         # ------------------------------------PostProcessing----------------------------------------
-        _cutbound_x = (int(self.canvas_size[0]/2),int(self.canvas_size[0]/2)+self.canvas_size[0])
-        _cutbound_y = (int(self.canvas_size[1]/2),int(self.canvas_size[1]/2)+self.canvas_size[1])
+        _cutbound_x = (int(self.max_component_size[0]/2),int(self.max_component_size[0]/2)+self.canvas_size[0])
+        _cutbound_y = (int(self.max_component_size[1]/2),int(self.max_component_size[1]/2)+self.canvas_size[1])
         _cut_canvas = _canvas[_cutbound_x[0]:_cutbound_x[1],_cutbound_y[0]:_cutbound_y[1]]
         # add a gaussian noise
         _cut_canvas = _cut_canvas + (np.random.randn(*(_cut_canvas.shape))*self.gaussian_noise_constant)
