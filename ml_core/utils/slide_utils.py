@@ -5,6 +5,11 @@ from skimage import measure, color
 from matplotlib import pyplot as plt
 import matplotlib.patches as mpatches
 import numpy as np
+from itertools import product
+from functools import reduce
+from skimage.filters import threshold_otsu
+from tqdm import tqdm
+
 
 
 LEVEL_BASE = 4
@@ -109,3 +114,32 @@ def get_connected_regions_from_tumor_slides(mask_path, verbose=False, mask_level
 
     return bbox_list
 
+
+def check_patch_include_tissue(patch, otsu_thresh):
+    # detect tissue regions having pixels with H, S, V >= otsu_threshold
+    hsv_patch = patch.convert("HSV")
+    channels = [np.asarray(hsv_patch.getchannel(c)) for c in ["H", "S", "V"]]
+    tissue_mask = np.bitwise_and(*[c >= otsu_thresh[i] for i, c in enumerate(channels)])
+    return np.sum(tissue_mask) > 0.15 * reduce(lambda a,b: a*b, tissue_mask.shape)
+
+
+def crop_ROI_from_slide(slide_path, save_dir, size, stride, level, annotation_file=None):
+
+    slide = read_slide(str(slide_path))
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    thumbnail = read_full_slide_by_level(slide_path, 2).convert("HSV")
+    otsu_thresh = [threshold_otsu(np.asarray(thumbnail.getchannel(c)))
+                   for c in ["H", "S", "V"]]
+
+    level_dims = slide.level_dimensions[level]
+    row_count, col_count = (level_dims[0] // stride + 1,
+                            level_dims[1] // stride + 1)
+
+    list_of_row_id_col_id = product(range(row_count), range(col_count))
+    for row_id, col_id in tqdm(list_of_row_id_col_id, total=row_count*col_count):
+        offset_x, offset_y = int(row_id * stride), int(col_id * stride)
+        slide_patch = read_region_from_slide(slide, offset_x, offset_y, level,
+                                             width=size, height=size)
+        if check_patch_include_tissue(slide_patch, otsu_thresh):
+            slide_patch.save(save_dir / f"ROI_{(offset_x, offset_y)}.png")

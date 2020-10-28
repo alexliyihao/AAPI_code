@@ -5,7 +5,8 @@ import cv2
 import numpy as np
 from pandas import DataFrame
 from PIL import ImageColor
-from typing import Union
+from collections import defaultdict
+from typing import List
 
 
 class ASAPAnnotation:
@@ -227,6 +228,7 @@ def create_asap_annotation_file(annotations, filename):
     list(map(lambda x: annotation_group_root.append(x), group_xmls))
 
     write_xml_to_file(str(filename), root)
+    return root
 
 
 def annotation_to_mask(annotations,
@@ -356,7 +358,9 @@ def mask_to_annotation(mask,
     upper_left_x, upper_left_y = upper_left_coordinates
     ds_rate = level_factor ** level
 
-    mask_2d = np.array(mask)[..., 0]
+    mask = np.array(mask)
+    mask_2d = mask[..., 0] if len(mask.shape) == 3 else mask
+    
     for label_row in label_info.itertuples():
 
         if label_row.label == 0:
@@ -379,6 +383,13 @@ def mask_to_annotation(mask,
     return annotations
 
 
+def repeat_2d_mask_to_3d(mask):
+    assert len(mask.shape) == 2, "No need to repeat; it's already a 3D mask."
+    mask_3d = np.copy(mask)
+    mask_3d = mask_3d[..., np.newaxis]
+    return np.repeat(mask_3d, repeats=3, axis=2)
+
+
 def generate_colorful_mask(mask, label_info):
     """
     Visualize mask in a colorful manner;
@@ -397,11 +408,31 @@ def generate_colorful_mask(mask, label_info):
         each label is visualized using a unique color
 
     """
-    colorful_mask = np.copy(mask)
-    mask_2d = mask[..., 0] if len(mask.shape) == 3 else mask
+    mask = np.array(mask)
+    mask_3d = repeat_2d_mask_to_3d(mask) if len(mask.shape) == 2 else mask
+    colorful_mask = np.copy(mask_3d)
+    mask_2d = mask_3d[..., 0]
 
     for row in label_info.itertuples():
         label, color = row.label, row.color
         colorful_mask[mask_2d == label] = _hex_to_rgb(color)
 
     return colorful_mask
+
+
+def merge_annotations(annotations_group: List[List[ASAPAnnotation]]):
+    group_name_index = defaultdict(list)
+
+    merged_annotations = []
+    for annotations in annotations_group:
+        for annotation in annotations:
+            group_name_index[annotation.group_name].append(annotation)
+
+    for group_name in group_name_index:
+        annotations: List[ASAPAnnotation] = group_name_index[group_name]
+        for new_id, annotation in enumerate(annotations):
+            annotation.annotation_name = f"{group_name}_{new_id:03d}"
+
+        merged_annotations += annotations
+
+    return merged_annotations
