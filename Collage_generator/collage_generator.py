@@ -5,14 +5,17 @@ from keras.preprocessing.image import ImageDataGenerator
 from tqdm.notebook import tqdm
 from scipy.stats import mode
 from typing import List, Dict, Tuple
+from PIL import ImageFilter
 import tables
 import time
+import os
 
 class collage_generator(object):
 
     def __init__(self,
                  label_list: List[str] = ["class_one", "class_two"],
                  canvas_size: Tuple[int,int] = (1024, 1024),
+                 cluster_size: Tuple[int,int] = (500,500),
                  example_image: str = "",
                  patience: int = 100,
                  gaussian_noise_constant: float = 25.0,
@@ -46,20 +49,21 @@ class collage_generator(object):
         self.gaussian_noise_constant = gaussian_noise_constant
         self.example_img = self.unify_image_format(example_image)
         self.scanning_constant = scanning_constant
+        self.max_component_size = np.array([0,0])
+        self.cluster_size = cluster_size
         if imagedatagenerator != None:
             self.datagen = imagedatagenerator
         else:
-            self.datagen = ImageDataGenerator(rotation_range = 360,
-                                                width_shift_range=0.1,
-                                                height_shift_range=0.1,
-                                                shear_range = 0.2,
-                                                zoom_range = [1.0, 2.0],
-                                                fill_mode = "constant",
-                                                cval = 0,
-                                                horizontal_flip= True,
-                                                vertical_flip= True,
-                                                data_format = "channels_last",
-                                                dtype = int)
+            self.datagen = ImageDataGenerator(#rotation_range = 360,
+                                              #width_shift_range=0.1,
+                                              #height_shift_range=0.1,
+                                              #shear_range = 0.1,
+                                              fill_mode = "constant",
+                                              cval = 0,
+                                              horizontal_flip= True,
+                                              vertical_flip= True,
+                                              data_format = "channels_last",
+                                              dtype = int)
 
     def unify_image_format(self, img, output_format: str = "np"):
         """
@@ -135,6 +139,24 @@ class collage_generator(object):
         self._canvas_size = (canvas_size[1], canvas_size[0])
 
     @property
+    def cluster_size(self):
+        """
+        makes the canvas_size can be access from .canvas_size
+        """
+        return self._cluster_size
+
+    @cluster_size.setter
+    def cluster_size(self, cluster_size: Tuple[int,int]):
+        """
+        enforce the update of canvas size some legal value, the update still from
+        collage_generator.cluster_size = (x,y)
+        """
+        assert len(cluster_size) == 2
+        assert cluster_size[0] > 0
+        assert cluster_size[1] > 0
+        self._cluster_size = (cluster_size[1], cluster_size[0])
+
+    @property
     def scanning_constant(self):
         """
         makes the canvas_size can be access from .scanning_constant
@@ -166,6 +188,7 @@ class collage_generator(object):
     def add_image(self,
                   img,
                   label: str,
+                  original_image_size = False,
                   size: Tuple[int,int] = (80,60),
                   pre_determined_size: bool = False):
         """
@@ -174,46 +197,106 @@ class collage_generator(object):
           img: str/np.ndarray/PIL.PngImagePlugin.PngImageFile, the path of the image or the image object
           label: str, the label of the image, which must be in the label list
           size: tuple of int, the size of the image in the image storage
+          original_image_size: bool, if true, will use the original image size
           pre_determined_size: bool, if False, will ask the user for a correct shape with preview
         """
         assert label in self.label_list
-        read_in = self.unify_image_format(img, output_format = "PIL")
 
-        # confirm the correct size of the image
-        if pre_determined_size == True:
-            np_img = np.array(read_in.resize(size))
+        if original_image_size == True:
+            np_img = self.unify_image_format(img, output_format = "np")
+            size = np_img.shape[:2]
         else:
-            size_okay = False
-            while (not size_okay):
-                # resize it and preview
-                np_img = np.array(read_in.resize(size))
-                plt.imshow(self._single_image_preview(np_img,
-                                                    canvas_size = self.canvas_size))
-                plt.show()
-                # check if original size okay
-                size_okay_input = input("is the size okay? [y/n] ")
+            read_in = self.unify_image_format(img, output_format = "PIL")
+            # confirm the correct size of the image
+            if pre_determined_size == True:
+                np_img = np.array(read_in.resize(size,resample = Img.NEAREST))
+            else:
+                size_okay = False
+                while (not size_okay):
+                    # resize it and preview
+                    np_img = np.array(read_in.resize(size,resample = Img.NEAREST))
+                    plt.imshow(self._single_image_preview(np_img,
+                                                        canvas_size = self.canvas_size))
+                    plt.show()
+                    # check if original size okay
+                    size_okay_input = input("is the size okay? [y/n] ")
 
-                # if the size if acceptable, leave the loop
-                if size_okay_input == "y" or size_okay_input == "Y":
-                    size_okay = True
+                    # if the size if acceptable, leave the loop
+                    if size_okay_input == "y" or size_okay_input == "Y":
+                        size_okay = True
 
-                # otherwise update a new shape
-                else:
-                    print(f"current size is {size}, please specify a new one")
-                    input_ok = False
-                    while not input_ok:
-                      new_x = input("new x: ")
-                      new_y = input("new y: ")
-                      try:
-                        new_x = int(new_x)
-                        new_y = int(new_y)
-                        input_ok = True
-                      except:
-                        print("invalid input")
-                    size = (new_x, new_y)
-
+                    # otherwise update a new shape
+                    else:
+                        print(f"current size is {size}, please specify a new one")
+                        input_ok = False
+                        while not input_ok:
+                          new_x = input("new x: ")
+                          new_y = input("new y: ")
+                          try:
+                            new_x = int(new_x)
+                            new_y = int(new_y)
+                            input_ok = True
+                          except:
+                            print("invalid input")
+                        size = (new_x, new_y)
+        size = np.array(size)
         self.image_list[self.label_dict[label]-1].append(np_img)
+        self.max_component_size = np.max(np.vstack((self.max_component_size, size)), axis = 0)
         print(f'image succesfully added to label "{label}" with size {size}')
+
+    def import_images_from_directory(self, root_path):
+        """
+        directly import all the images class under root_path
+        arg:
+          root_path: the root path loading images
+        return:
+          image_list: 2D list of RGB np.ndarray, each label will have a individual list
+          class_name_list: 1D list of string, number of label
+        """
+        for label in sorted(os.listdir(root_path)):
+            if label == "background.png":
+              continue
+            self.add_label(new_label = label)
+            for img in os.listdir(os.path.join(root_path, label)):
+                if label == "arteriole":
+                    self.add_image(img = os.path.join(root_path, label, img),
+                                   label = label,
+                                   original_image_size = False,
+                                   size = (80,80),
+                                   pre_determined_size = True
+                                   )
+                elif label == "artery":
+                    self.add_image(img = os.path.join(root_path, label, img),
+                                   label = label,
+                                   original_image_size = False,
+                                   size = (300,300),
+                                   pre_determined_size = True
+                                   )
+                elif label == "glomerulus":
+                    self.add_image(img = os.path.join(root_path, label, img),
+                                   label = label,
+                                   original_image_size = False,
+                                   size = (300,300),
+                                   pre_determined_size = True
+                                   )
+                elif label == "proximal_tubule":
+                    self.add_image(img = os.path.join(root_path, label, img),
+                                   label = label,
+                                   original_image_size = False,
+                                   size = (150,150),
+                                   pre_determined_size = True
+                                   )
+                elif label == "distal_tubule":
+                    self.add_image(img = os.path.join(root_path, label, img),
+                                   label = label,
+                                   original_image_size = False,
+                                   size = (200,200),
+                                   pre_determined_size = True
+                                   )
+                #else:
+                #    self.add_image(img = os.path.join(root_path, label, img),
+                #                  label = label,
+                #                  original_image_size = True)
 
     def _single_image_preview(self, img: np.ndarray, canvas_size: Tuple[int,int] = (1,1)):
         """
@@ -237,7 +320,8 @@ class collage_generator(object):
                       add_point: np.ndarray,
                       img: np.ndarray,
                       mask: np.ndarray = None,
-                      mask_label: int = None):
+                      mask_label: int = None,
+                      mode = "label"):
         """
         the actual working part, add a image to a canvas
         input:
@@ -247,37 +331,41 @@ class collage_generator(object):
           mask: np.ndarray(if it's there), 1-channel, the mask with the canvas
           mask_label: int(if mask if np.ndarray), the value of this label onto the mask
         """
-        # if there's no mask
-        if type(mask) != np.ndarray:
-          # add img to canvas by pixel, only be used in single image preview
-          for x in np.arange(img.shape[0]):
-            for y in np.arange(img.shape[1]):
-              if not np.any(img[x,y]):
-                pass
-              else:
-                for j in np.arange(3):
-                  canvas[add_point[0]+x, add_point[1]+y,j] = img[x,y,j]
-          # return canvas
-          return canvas
-        # if there's a mask
+        assert mode in ["label", "pattern"]
+        if mode == "label":
+            # if there's no mask
+            if type(mask) != np.ndarray:
+              # add img to canvas by pixel, only be used in single image preview
+              for x in np.arange(img.shape[0]):
+                for y in np.arange(img.shape[1]):
+                  if np.any(img[x,y]):
+                    canvas[add_point[0]+x, add_point[1]+y] = img[x,y]
+              # return canvas
+              return canvas
+            # if there's a mask
+            else:
+              # add image to canvas, add label to mask by pixel, return both
+              for x in np.arange(img.shape[0]):
+                for y in np.arange(img.shape[1]):
+                  if np.any(img[x,y]):
+                    canvas[add_point[0]+x, add_point[1]+y] = img[x,y]
+                    mask[add_point[0]+x, add_point[1]+y] = mask_label
+              return canvas, mask
         else:
-          # add image to canvas, add label to mask by pixel, return both
-          for x in np.arange(img.shape[0]):
-            for y in np.arange(img.shape[1]):
-              if not np.any(img[x,y]):
-                pass
-              else:
-                for j in np.arange(3):
-                  canvas[add_point[0]+x, add_point[1]+y,j] = img[x,y,j]
-                mask[add_point[0]+x, add_point[1]+y] = mask_label
-          return canvas, mask
+            for x in np.arange(img.shape[0]):
+              for y in np.arange(img.shape[1]):
+                if np.any(img[x,y]):
+                  canvas[add_point[0]+x, add_point[1]+y] = img[x,y]
+                  mask[add_point[0]+x, add_point[1]+y] = mask_label[x,y]
+            return canvas, mask
 
     def _try_insert(self,
                    img: np.ndarray,
                    canvas: np.ndarray,
                    mask: np.ndarray,
                    label: int,
-                   patience: int):
+                   patience: int,
+                   mode = "label"):
       """
       try to insert img into canvas and mask, if there's any overlap, redo it, retry for patience times
       input:
@@ -314,7 +402,8 @@ class collage_generator(object):
                                a_max = _outer_bound)
 
           # check if there's any overlap
-          _check_zone = mask[_add_point[0]:_add_point[0]+_img_mask.shape[0], _add_point[1]:_add_point[1]+_img_mask.shape[1]]
+          _check_zone = mask[_add_point[0]:_add_point[0]+_img_mask.shape[0],
+                             _add_point[1]:_add_point[1]+_img_mask.shape[1]]
           # if so
           if np.any(np.multiply(_check_zone,_img_mask)) == True:
             #retry for a new point
@@ -325,7 +414,8 @@ class collage_generator(object):
                                               add_point = _add_point,
                                               img = img,
                                               mask = mask,
-                                              mask_label = label)
+                                              mask_label = label,
+                                              mode = mode)
             break
       return canvas, mask
 
@@ -339,11 +429,129 @@ class collage_generator(object):
         """
         return np.nonzero(np.random.multinomial(1,prob_distribution))[0][0]
 
+    def crop_image(self, img):
+        """
+        crop all the 0 paddings aside
+        input:
+          img: np.ndarray, image to be cropped
+        return:
+          img: np.ndarray, image cropped
+        """
+        if len(img.shape) == 3:
+            x = np.nonzero(np.any(img, axis = (0,2)))[0]
+            y = np.nonzero(np.any(img, axis = (1,2)))[0]
+        else:
+            x = np.nonzero(np.any(img, axis = (0)))[0]
+            y = np.nonzero(np.any(img, axis = (1)))[0]
+        xs,xf = x[0],x[-1]
+        ys,yf = y[0],y[-1]
+        img = img[ys:yf,xs:xf]
+        return img
+
+    def generate_background(self,
+                            canvas_size,
+                            scanning_size = (50,50),
+                            sample_threshold = 0.2,
+                            offset_const = 10,
+                            gaussian_variance = 0.01,
+                            filter_size = 3):
+        # the sampling is based on a grid-scanning scheme, we made some randomness on the grid scanning
+        scan_sample = np.ceil(np.true_divide(self.example_img.shape[:2],scanning_size)).astype(int)
+        non_zero_list = []
+        # for the randomness, make some retry
+        for offset in tqdm([(scanning_size[0]//offset_const*ratio,scanning_size[1]//offset_const*ratio) for ratio in range(offset_const)],
+                           desc = "sampling",
+                           leave = False):
+          #search the grid
+          for i in range(scan_sample[0]):
+            for j in range(scan_sample[1]):
+              # find the starting point, add some turbulence to the sample
+              x = int(np.random.normal(loc = i, scale = gaussian_variance)*scanning_size[0]) + offset[0]
+              y = int(np.random.normal(loc = j, scale = gaussian_variance)*scanning_size[1]) + offset[1]
+              scanning_area = self.example_img[y : np.min((self.example_img.shape[1],y + scanning_size[1])),
+                                               x : np.min((self.example_img.shape[0],x + scanning_size[0]))]
+              # if the nonzero-area ratio is greater than the thereshold
+              if np.sum(np.any(scanning_area, axis = 2))/(scanning_size[0]*scanning_size[1]) > sample_threshold:
+                # sample it, crop possible additional black pad
+                non_zero_list.append(self.crop_image(scanning_area))
+
+        canvas = np.zeros((*canvas_size,3))
+        # do something similar, add the image to grid
+        scan_add = np.ceil(np.true_divide(canvas_size,scanning_size)).astype(int)
+        # for this time we will pile the images for several layers, with some specific offset
+        for offset in tqdm([(scanning_size[0]//offset_const*ratio,scanning_size[1]//offset_const*ratio) for ratio in range(offset_const)],
+                           desc = "background generating",
+                           leave = False):
+          for i in range(scan_add[0]):
+            for j in range(scan_add[1]):
+              # when adding the image still provide some randomness
+              add_point = (int(np.random.normal(loc = j, scale = gaussian_variance)*scanning_size[1])+offset[1],
+                           int(np.random.normal(loc = i, scale = gaussian_variance)*scanning_size[0])+offset[0])
+              try:
+                canvas = self._canvas_append(canvas = canvas,
+                                             #img = non_zero_list[np.random.randint(len(non_zero_list))],
+                                             img = self.datagen.random_transform(non_zero_list[np.random.randint(len(non_zero_list))]),
+                                             add_point = add_point)
+              except:
+                continue
+        #convert all the black part to white
+        canvas = np.where(canvas == 0, 255, canvas)
+        # give it a filter to eliminate the clear edge
+        filtered = Img.fromarray(canvas.astype("uint8")).filter(ImageFilter.MedianFilter(size = filter_size))
+        filtered = np.array(filtered.filter(ImageFilter.MedianFilter(size = filter_size)), dtype = "uint8")
+        return filtered
+
+    def cut_circle_edges(self, mask, center = (1, 1), radius = 3, circle_mask_label = 100):
+        """
+        create a round mask on a 2D mask with label = circle_mask_label,
+        used to create a "round distribution" of cluster
+        """
+        m,n = mask.shape
+        a,b = center
+        r = radius
+        y,x = np.ogrid[-a:m-a, -b:n-b]
+        _mask = (x*x + y*y > r*r)
+        mask[_mask] = circle_mask_label
+        return mask
+
+    def build_cluster(self, sub_canvas_size = (500,500)):
+        """
+        create a glomerus-proximal tubules cluster, with its mask
+        """
+        _circle_mask_label = 10
+        _center = np.random.normal(loc = np.divide(sub_canvas_size,2),
+                                  scale = np.divide(sub_canvas_size,50)).astype("int")
+        _sub_canvas = np.zeros((*sub_canvas_size,3), dtype = "uint8")
+        _mask = np.zeros(sub_canvas_size)
+
+        _mask = self.cut_circle_edges(mask = _mask,
+                                      center = _center,
+                                      radius = sub_canvas_size[0]/2,
+                                      circle_mask_label = _circle_mask_label)
+
+        _glom_list = self.image_list[self.label_dict["glomerulus"]-1]
+        _tubules_list = self.image_list[self.label_dict["proximal_tubule"]-1]
+
+        _glom_chosen = _glom_list[np.random.randint(0,len(_glom_list))]
+        _canvas, _mask = self._canvas_append(canvas= _sub_canvas,
+                                             add_point= np.subtract(_center,
+                                                                    np.divide(_glom_chosen.shape[:2],2)).astype("int"),
+                                             img = _glom_chosen,
+                                             mask = _mask,
+                                             mask_label = self.label_dict["glomerulus"])
+        for i in range(50):
+            self._try_insert(img = _tubules_list[np.random.randint(0,len(_tubules_list))],
+                             canvas = _sub_canvas,
+                             mask = _mask,
+                             label = self.label_dict["proximal_tubule"],
+                             patience = 20)
+        _mask = np.where(_mask == _circle_mask_label, 0, _mask)
+        return self.crop_image(_sub_canvas), self.crop_image(_mask)
 
     def generate(self,
-                 item_num: int = 200,
-                 ratio_list: List[float] = [1.0,0.0],
-                 background_color = False,
+                 item_num: int = 5,
+                 ratio_dict: dict = {"cluster":0.2, "artery": 0.5, 'arteriole': 0.3},
+                 background_color = True,
                  return_dict = True
                  ):
         """
@@ -358,23 +566,47 @@ class collage_generator(object):
           _mask, np.ndarray, self._canvas_size shape, 1 channel, the mask of the canvas
           label_dict: dict, the dictionary of label name and label value
         """
-
-        assert len(ratio_list) == len(self.label_dict)
-        # in case the ratio is some weird value
-        _ratio_list = np.array(ratio_list)
+        # give the correct order, normalize the ratio
+        _ratio_list = np.fromiter((ratio_dict[i] for i in ["cluster", "artery", 'arteriole']), dtype = float)
         _ratio_list = _ratio_list / np.sum(_ratio_list)
-        # generate a larger canvas and a larger mask
-        _canvas = np.full(shape = (self._canvas_size[0]*2, self._canvas_size[0]*2,3),
-                          fill_value = 255,
-                          dtype="uint8")
-        _mask = np.zeros((self._canvas_size[0]*2, self._canvas_size[0]*2), dtype = "uint8")
 
-        #for each iteration
-        for _num_count in tqdm(np.arange(item_num), desc = "Generating...", leave = False):
+        _temp_canvas_size = self._canvas_size + 2*self.max_component_size
+        # -------------------------------------Background----------------------------------------
+        # generate a larger main canvas and a larger main mask, use them as the background of the final output
+        if background_color == True:
+          _canvas = self.generate_background(canvas_size = _temp_canvas_size)
+        else:
+          _canvas = np.full(shape = (_temp_canvas_size[0], _temp_canvas_size[1],3),
+                            fill_value = 255,
+                            dtype="uint8")
+        _mask = np.zeros((_temp_canvas_size[0], _temp_canvas_size[1]))
+        # -------------------------------------Component------------------------------------------
+        # -------------------------------------Cluster--------------------------------------------
+        _n_cluster = np.ceil(_ratio_list[0]*item_num)
+        for _num_count in tqdm(np.arange(_n_cluster),
+                               desc = "Appending Clusters...",
+                               leave = False):
+            _cluster_canvas, _cluster_mask = self.build_cluster(sub_canvas_size = self.cluster_size)
+            _canvas, _mask = self._try_insert(img = _cluster_canvas,
+                                              canvas = _canvas,
+                                              mask = _mask,
+                                              label = _cluster_mask,
+                                              patience = self.patience,
+                                              mode = "pattern")
+        # -------------------------------artery, and arteriole------------------------------------
+        # the rest ratio will be used for random selection
+        _ratio_list = _ratio_list[1:]
+        _ratio_list = _ratio_list / np.sum(_ratio_list)
+        _item_list = ["artery", 'arteriole']
+        #for the rest iteration
+        for _num_count in tqdm(np.arange(item_num - _n_cluster),
+                               desc = "Appending artery and arteriole...",
+                               leave = False):
             # generate a random class from the distribution
             _class_add = self._multinomial_distribution(_ratio_list)
-            # find the image_list for this class
-            _image_list = self.image_list[_class_add]
+            _label_value = self.label_dict[_item_list[_class_add]]
+            # if it's artery or arteriole, find the image_list for this class
+            _image_list = self.image_list[_label_value - 1]
             # if the class is empty, skip
             if len(_image_list) == 0:
               pass
@@ -385,34 +617,34 @@ class collage_generator(object):
               _img_transformed = self.datagen.random_transform(_img)
               # append it to the canvas
               _canvas, _mask = self._try_insert(img = _img_transformed,
-                                               canvas = _canvas,
-                                               mask = _mask,
-                                               label = self.label_dict[self.label_list[_class_add]],
-                                               patience = self.patience)
+                                                canvas = _canvas,
+                                                mask = _mask,
+                                                label = _label_value,
+                                                patience = self.patience)
+        # -------------------------------------distal tubules-------------------------------------
+        _image_list = self.image_list[self.label_dict["distal_tubule"]-1]
+        for _num_count in tqdm(np.arange(1000),
+                               desc = "Appending distal_tubules...",
+                               leave = False):
+            _img = _image_list[np.random.randint(len(_image_list))]
+            _img_transformed = _img#self.datagen.random_transform(_img)
+            # append it to the canvas
+            _canvas, _mask = self._try_insert(img = _img_transformed,
+                                              canvas = _canvas,
+                                              mask = _mask,
+                                              label = self.label_dict["distal_tubule"],
+                                              patience = self.patience)
 
-        if (background_color):
-            # get a background color by extracting the mode
-            _color = (mode(self.example_img, axis = 0)[0][0][0] + (np.random.randn(3)*5)).astype(int)
-        else:
-            # generate a white one
-            _color = np.array([255,255,255], dtype = "uint8")
-        # create a color backgound of this color
-        _color_background = np.multiply(np.ones(shape = _canvas.shape), _color).astype(int)
-        # apply the background color to image
-        _canvas[_mask == 0] = _color_background[_mask == 0]
-
-        # add a gaussian noise to non-white area
-        if (background_color):
-            _canvas = _canvas + (np.random.randn(*(_canvas.shape))*self.gaussian_noise_constant)
-        else:
-            _canvas[_mask != 0] = _canvas[_mask != 0] + np.random.randn(*(_canvas[_mask != 0].shape))*self.gaussian_noise_constant
-
-        _cutbound_x = (int(self.canvas_size[0]/2),int(self.canvas_size[0]/2)+self.canvas_size[0])
-        _cutbound_y = (int(self.canvas_size[1]/2),int(self.canvas_size[1]/2)+self.canvas_size[1])
+        # ------------------------------------PostProcessing----------------------------------------
+        _cutbound_x = (int(self.max_component_size[0]/2),int(self.max_component_size[0]/2)+self.canvas_size[0])
+        _cutbound_y = (int(self.max_component_size[1]/2),int(self.max_component_size[1]/2)+self.canvas_size[1])
         _cut_canvas = _canvas[_cutbound_x[0]:_cutbound_x[1],_cutbound_y[0]:_cutbound_y[1]]
+        # add a gaussian noise
+        _cut_canvas = _cut_canvas + (np.random.randn(*(_cut_canvas.shape))*self.gaussian_noise_constant)
+
         #make sure the output value is legal
-        _cut_canvas = np.clip(_cut_canvas, a_min = 0, a_max = 255).astype(int)
-        _cut_mask = _mask[_cutbound_x[0]:_cutbound_x[1],_cutbound_y[0]:_cutbound_y[1]]
+        _cut_canvas = np.clip(_cut_canvas, a_min = 0, a_max = 255).astype("uint8")
+        _cut_mask = _mask[_cutbound_x[0]:_cutbound_x[1],_cutbound_y[0]:_cutbound_y[1]].astype("uint8")
         if return_dict:
             return _cut_canvas, _cut_mask, self.label_dict
         else:
