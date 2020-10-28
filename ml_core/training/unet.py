@@ -7,11 +7,18 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import pytorch_lightning as pl
 from pytorch_lightning.metrics.functional import f1_score
+from functools import partial
 
 
 class UNet(pl.LightningModule):
-    def __init__(self, in_channels=1, n_classes=2, depth=5, wf=6, padding=False,
-                 batch_norm=False, up_mode='upconv',
+    def __init__(self,
+                 in_channels,
+                 n_classes,
+                 depth,
+                 wf,
+                 padding,
+                 batch_norm,
+                 up_mode='upconv',
                  **train_kwargs
                  ):
         """
@@ -42,6 +49,7 @@ class UNet(pl.LightningModule):
         """
         super().__init__()
         assert up_mode in ('upconv', 'upsample')
+        self.save_hyperparameters()
         self.padding = padding
         self.depth = depth
         self.n_classes = n_classes
@@ -63,7 +71,9 @@ class UNet(pl.LightningModule):
         self.train_kwargs = train_kwargs
 
         self.optimizer = self.train_kwargs.get("optimizer",
-                                               [Adam(params=self.parameters(), lr=1e-3)])
+                                               [partial(Adam, lr=1e-3)])
+        self.optimizer = [opt(self.parameters()) for opt in self.optimizer]
+
         self.scheduler = self.train_kwargs.get("scheduler",
                                                [ReduceLROnPlateau(opt, factor=0.1, patience=25)
                                                 for opt in self.optimizer])
