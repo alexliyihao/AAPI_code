@@ -142,3 +142,5 @@ cython_debug/
 
 # local test directory
 /local_test/
+
+.DS_Store
