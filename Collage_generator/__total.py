@@ -9,25 +9,32 @@ from PIL import ImageFilter
 import tables
 import time
 import os
+import albumentations as A
+import cv2
+
+"""
+This is a history saved for records, doing same thing but don't call it
+"""
 
 class collage_generator(object):
 
     def __init__(self,
                  label_list: List[str] = ["class_one", "class_two"],
-                 canvas_size: Tuple[int,int] = (1024, 1024),
+                 canvas_size: Tuple[int,int] = (1024,1024),
                  cluster_size: Tuple[int,int] = (500,500),
                  example_image: str = "",
                  patience: int = 100,
-                 gaussian_noise_constant: float = 25.0,
-                 scanning_constant: int = 50,
-                 imagedatagenerator = None):
+                 gaussian_noise_constant: float = 15.0,
+                 scanning_constant: int = 25):
         """
         the initiator
-        input:
+        args:
           label_list:
             list of string, the list of label names
           canvas_size:
-            tuple of length 2, the 2d size of the collage
+            tuple of int length 2, the 2d size of the collage
+          cluster_size:
+            tuple of int length 2, the 2d size of the cluster
           example_image:
             str/np.ndarray/PIL.imageobject, example_image for background
           patience:
@@ -36,11 +43,9 @@ class collage_generator(object):
             float, define the strength of gaussian noise onto the background
           scanning_constant:
             int, the maximum relocation step try if there's overlapping
-          image_data_generator:
-            keras.image.imagedatagenerator object, if not None, will replace the default one
         """
         super(collage_generator, self).__init__()
-        assert len(canvas_size) == 2
+
         self.label_list = label_list
         self.label_dict = dict(zip(label_list, range(1, len(label_list)+1)))
         self.image_list = [[] for i in range(len(label_list))]
@@ -51,24 +56,67 @@ class collage_generator(object):
         self.scanning_constant = scanning_constant
         self.max_component_size = np.array([0,0])
         self.cluster_size = cluster_size
-        if imagedatagenerator != None:
-            self.datagen = imagedatagenerator
+
+    def _generate_augmentation(self, mode = "distal_tubules"):
+        """
+        create a augmentation instance from albumentation
+        args:
+          mode: str, "distal_tubules" or "other", the mode of augmentation will be provided
+                     when under "distal_tubules" mode, the augmentation will provide a consistent directory augmentation
+        """
+        assert mode in ["distal_tubules", "other"]
+        if mode == "other":
+            _transform =  A.Compose([A.Flip(p = 0.7),
+                                    A.GridDistortion(num_steps=3,
+                                                     distort_limit=0.03,
+                                                     interpolation=cv2.INTER_NEAREST,
+                                                     border_mode = cv2.BORDER_CONSTANT,
+                                                     p = 0.3),
+                                    A.Transpose(p = 0.5),
+                                    A.ShiftScaleRotate(shift_limit=0.0,
+                                                       scale_limit=(-0.2,0),
+                                                       rotate_limit=90,
+                                                       interpolation= cv2.INTER_NEAREST,
+                                                       border_mode = cv2.BORDER_CONSTANT,
+                                                       p = 0.5)
+                                  ])
         else:
-            self.datagen = ImageDataGenerator(#rotation_range = 360,
-                                              #width_shift_range=0.1,
-                                              #height_shift_range=0.1,
-                                              #shear_range = 0.1,
-                                              fill_mode = "constant",
-                                              cval = 0,
-                                              horizontal_flip= True,
-                                              vertical_flip= True,
-                                              data_format = "channels_last",
-                                              dtype = int)
+            _Vflip_flag = np.random.randint(0,2)
+            _Hflip_flag = np.random.randint(0,2)
+            _Transpose_flag = np.random.randint(0,2)
+            _rotation = np.random.randint(0,15)
+            _transform = A.Compose([
+                A.VerticalFlip(p = _Vflip_flag),
+                A.HorizontalFlip(p = _Hflip_flag),
+                A.Transpose(p = _Transpose_flag),
+                A.GridDistortion(num_steps=5,
+                                distort_limit=0.05,
+                                interpolation=cv2.INTER_NEAREST,
+                                border_mode = cv2.BORDER_CONSTANT,
+                                p = 1),
+                A.ShiftScaleRotate(shift_limit=0.0,
+                                  scale_limit=(-0.2,0),
+                                  rotate_limit=(0,_rotation),
+                                  interpolation= cv2.INTER_NEAREST,
+                                  border_mode = cv2.BORDER_CONSTANT,
+                                  p = 1)
+            ])
+        return _transform
+
+    def augment(self,image,_transform):
+        """
+        wrapper for transformation
+        _transform:albumentations.core.composition.Compose object
+        image: np.ndarray, the actual image
+
+        return: np.ndarray, the transformed image from _transform
+        """
+        return _transform(image = image)["image"]
 
     def unify_image_format(self, img, output_format: str = "np"):
         """
         convert any image input into RGB np.ndarray type
-        input:
+        args:
             img:
               string, the path of image
               or
@@ -102,6 +150,16 @@ class collage_generator(object):
             output = Img.fromarray(output)
 
         return output
+
+    def _random_select(self, list_x):
+        """
+        wrapper for randomly selected from a list
+        arg:
+          list_x, a list
+        return:
+          a randomly selected element
+        """
+        return list_x[np.random.randint(len(list_x))]
 
     @property
     def patience(self):
@@ -176,7 +234,7 @@ class collage_generator(object):
     def add_label(self, new_label: str):
         """
         add a new label into the generator
-        input:
+        args:
           new_label: string, the name of this label
         """
         #add new label into the list
@@ -193,7 +251,7 @@ class collage_generator(object):
                   pre_determined_size: bool = False):
         """
         add an image into the image storages with specified label and size
-        input:
+        args:
           img: str/np.ndarray/PIL.PngImagePlugin.PngImageFile, the path of the image or the image object
           label: str, the label of the image, which must be in the label list
           size: tuple of int, the size of the image in the image storage
@@ -254,54 +312,57 @@ class collage_generator(object):
           class_name_list: 1D list of string, number of label
         """
         for label in sorted(os.listdir(root_path)):
-            if label == "background.png":
+            if label == "background.png" or label == ".ipynb_checkpoint":
               continue
             self.add_label(new_label = label)
             for img in os.listdir(os.path.join(root_path, label)):
-                if label == "arteriole":
-                    self.add_image(img = os.path.join(root_path, label, img),
-                                   label = label,
-                                   original_image_size = False,
-                                   size = (80,80),
-                                   pre_determined_size = True
-                                   )
-                elif label == "artery":
-                    self.add_image(img = os.path.join(root_path, label, img),
-                                   label = label,
-                                   original_image_size = False,
-                                   size = (300,300),
-                                   pre_determined_size = True
-                                   )
-                elif label == "glomerulus":
-                    self.add_image(img = os.path.join(root_path, label, img),
-                                   label = label,
-                                   original_image_size = False,
-                                   size = (300,300),
-                                   pre_determined_size = True
-                                   )
-                elif label == "proximal_tubule":
-                    self.add_image(img = os.path.join(root_path, label, img),
-                                   label = label,
-                                   original_image_size = False,
-                                   size = (150,150),
-                                   pre_determined_size = True
-                                   )
-                elif label == "distal_tubule":
-                    self.add_image(img = os.path.join(root_path, label, img),
-                                   label = label,
-                                   original_image_size = False,
-                                   size = (200,200),
-                                   pre_determined_size = True
-                                   )
+                try:
+                    if label == "arteriole":
+                        self.add_image(img = os.path.join(root_path, label, img),
+                                      label = label,
+                                      original_image_size = False,
+                                      size = (80,80),
+                                      pre_determined_size = True
+                                      )
+                    elif label == "artery":
+                        self.add_image(img = os.path.join(root_path, label, img),
+                                      label = label,
+                                      original_image_size = False,
+                                      size = (300,300),
+                                      pre_determined_size = True
+                                      )
+                    elif label == "glomerulus":
+                        self.add_image(img = os.path.join(root_path, label, img),
+                                      label = label,
+                                      original_image_size = False,
+                                      size = (300,300),
+                                      pre_determined_size = True
+                                      )
+                    elif label == "proximal_tubule":
+                        self.add_image(img = os.path.join(root_path, label, img),
+                                      label = label,
+                                      original_image_size = False,
+                                      size = (150,150),
+                                      pre_determined_size = True
+                                      )
+                    elif label == "distal_tubule":
+                        self.add_image(img = os.path.join(root_path, label, img),
+                                      label = label,
+                                      original_image_size = False,
+                                      size = (200,200),
+                                      pre_determined_size = True
+                                      )
                 #else:
                 #    self.add_image(img = os.path.join(root_path, label, img),
                 #                  label = label,
                 #                  original_image_size = True)
+                except:
+                  continue
 
     def _single_image_preview(self, img: np.ndarray, canvas_size: Tuple[int,int] = (1,1)):
         """
         generate a size preview for single image vs canvas size
-        input:
+        args:
           img: the image to be added
           canvas_size: the size of canvas
         return:
@@ -324,7 +385,7 @@ class collage_generator(object):
                       mode = "label"):
         """
         the actual working part, add a image to a canvas
-        input:
+        args:
           canvas: np.ndarray, 3-channel canvas
           add_point: tuple of int, the topleft point of the image to be added
           img: np.ndarray, 3-channel, the image to be added
@@ -365,10 +426,12 @@ class collage_generator(object):
                    mask: np.ndarray,
                    label: int,
                    patience: int,
-                   mode = "label"):
+                   mode = "label",
+                   initial_insert = False,
+                   secondary_insert = False):
       """
-      try to insert img into canvas and mask, if there's any overlap, redo it, retry for patience times
-      input:
+      try to insert img into canvas and mask
+      args:
         img: np.ndarray of 3 channels, the image of item to be added
         canvas: np.ndarray of 3 channels, the canvas
         mask: np.ndarray of 1 channel, the mask
@@ -388,9 +451,58 @@ class collage_generator(object):
                                                high = _outer_bound[0] - self.scanning_constant),
                             np.random.randint(low = self.scanning_constant,
                                               high = _outer_bound[1] - self.scanning_constant)))
-
+      # create a binary mask of the img
       _img_mask = np.any(img, axis = 2)
+      # if that's initial inserting
+      if initial_insert == True:
+        # directly use the _add_point
+          canvas, mask = self._canvas_append(canvas = canvas,
+                                      add_point = _add_point,
+                                      img = img,
+                                      mask = mask,
+                                      mask_label = label,
+                                      mode = mode)
+          return canvas, mask
 
+      # if that's secondary inserting
+      if secondary_insert == True:
+          for retry in range(patience):
+              # for each time make a small move
+              _add_point = _add_point + np.random.randint(low = -1*self.scanning_constant,
+                                                          high = self.scanning_constant,
+                                                          size = 2)
+              # make sure the new value is legal
+              _add_point = np.clip(a = _add_point,
+                                  a_min = (0,0),
+                                  a_max = _outer_bound)
+
+              # check if there's any overlap
+              _check_zone = mask[_add_point[0]:_add_point[0]+_img_mask.shape[0],
+                                _add_point[1]:_add_point[1]+_img_mask.shape[1]]
+              # if so
+              if np.any(np.multiply(_check_zone,_img_mask)) == True:
+                #retry for a new point
+                continue
+              # otherwise add the img to canvas and mask and stop retry
+              else:
+                canvas, mask = self._canvas_append(canvas = canvas,
+                                                  add_point = _add_point,
+                                                  img = img,
+                                                  mask = mask,
+                                                  mask_label = label,
+                                                  mode = mode)
+                break
+          return canvas, mask
+
+      # check if there's any overlap
+      _check_zone = mask[_add_point[0]:_add_point[0]+_img_mask.shape[0],
+                        _add_point[1]:_add_point[1]+_img_mask.shape[1]]
+      # if we start with an overlap, we need to escape from overlap, otherwise we need to find a overlap
+      _init_overlapped = np.any(np.multiply(_check_zone,_img_mask))
+      # if we are in a finding mode and need to record the last add point
+      _last_add_point = _add_point
+
+      # in the patience time
       for retry in range(patience):
           # for each time make a small move
           _add_point = _add_point + np.random.randint(low = -1*self.scanning_constant,
@@ -398,31 +510,47 @@ class collage_generator(object):
                                                       size = 2)
           # make sure the new value is legal
           _add_point = np.clip(a = _add_point,
-                               a_min = (0,0),
-                               a_max = _outer_bound)
-
+                              a_min = (0,0),
+                              a_max = _outer_bound)
           # check if there's any overlap
           _check_zone = mask[_add_point[0]:_add_point[0]+_img_mask.shape[0],
-                             _add_point[1]:_add_point[1]+_img_mask.shape[1]]
-          # if so
-          if np.any(np.multiply(_check_zone,_img_mask)) == True:
-            #retry for a new point
-            continue
-          # otherwise add the img to canvas and mask and stop retry
+                            _add_point[1]:_add_point[1]+_img_mask.shape[1]]
+          # check if there's overlap
+          _overlap = np.any(np.multiply(_check_zone,_img_mask))
+          # if we had a overlap in "escaping"
+          if (_overlap == True) and (_init_overlapped == True):
+              #retry for a new point
+              continue
+          # if we met the first non-overlap while escaping
+          elif (_overlap == False) and (_init_overlapped == True):
+              #stop the finding
+              canvas, mask = self._canvas_append(canvas = canvas,
+                                                add_point = _add_point,
+                                                img = img,
+                                                mask = mask,
+                                                mask_label = label,
+                                                mode = mode)
+              break
+          # if we are finding but not found
+          elif (_overlap == False) and (_init_overlapped == False):
+              #record last add_point and retry for a new point
+              _last_add_point = _add_point
+              continue
+          # or we are finding a overlap and found it, we need to use the last
           else:
-            canvas, mask = self._canvas_append(canvas = canvas,
-                                              add_point = _add_point,
-                                              img = img,
-                                              mask = mask,
-                                              mask_label = label,
-                                              mode = mode)
-            break
+              canvas, mask = self._canvas_append(canvas = canvas,
+                                                 add_point = _last_add_point,
+                                                 img = img,
+                                                 mask = mask,
+                                                 mask_label = label,
+                                                 mode = mode)
+              break
       return canvas, mask
 
     def _multinomial_distribution(self, prob_distribution):
         """
         Just a wrapper, I don't even know np and scipy's multinomial sampling is that weird...
-        input:
+        args:
           prob_distribution: any iterable, the multinomial distribution probability
         output:
           a sample from probability provided
@@ -432,7 +560,7 @@ class collage_generator(object):
     def crop_image(self, img):
         """
         crop all the 0 paddings aside
-        input:
+        args:
           img: np.ndarray, image to be cropped
         return:
           img: np.ndarray, image cropped
@@ -458,6 +586,8 @@ class collage_generator(object):
         # the sampling is based on a grid-scanning scheme, we made some randomness on the grid scanning
         scan_sample = np.ceil(np.true_divide(self.example_img.shape[:2],scanning_size)).astype(int)
         non_zero_list = []
+        _transform = self._generate_augmentation(mode = "other")
+
         # for the randomness, make some retry
         for offset in tqdm([(scanning_size[0]//offset_const*ratio,scanning_size[1]//offset_const*ratio) for ratio in range(offset_const)],
                            desc = "sampling",
@@ -489,8 +619,8 @@ class collage_generator(object):
                            int(np.random.normal(loc = i, scale = gaussian_variance)*scanning_size[0])+offset[0])
               try:
                 canvas = self._canvas_append(canvas = canvas,
-                                             #img = non_zero_list[np.random.randint(len(non_zero_list))],
-                                             img = self.datagen.random_transform(non_zero_list[np.random.randint(len(non_zero_list))]),
+                                             img = self.augment(image = self._random_select(non_zero_list),
+                                                                _transform = _transform),
                                              add_point = add_point)
               except:
                 continue
@@ -518,6 +648,7 @@ class collage_generator(object):
         """
         create a glomerus-proximal tubules cluster, with its mask
         """
+        _transform = self._generate_augmentation(mode = "other")
         _circle_mask_label = 10
         _center = np.random.normal(loc = np.divide(sub_canvas_size,2),
                                   scale = np.divide(sub_canvas_size,50)).astype("int")
@@ -531,8 +662,9 @@ class collage_generator(object):
 
         _glom_list = self.image_list[self.label_dict["glomerulus"]-1]
         _tubules_list = self.image_list[self.label_dict["proximal_tubule"]-1]
-
-        _glom_chosen = _glom_list[np.random.randint(0,len(_glom_list))]
+        _glom_chosen = self.augment(image = self._random_select(_glom_list),
+                                    _transform = _transform)
+        # have the glom added to the center
         _canvas, _mask = self._canvas_append(canvas= _sub_canvas,
                                              add_point= np.subtract(_center,
                                                                     np.divide(_glom_chosen.shape[:2],2)).astype("int"),
@@ -540,11 +672,12 @@ class collage_generator(object):
                                              mask = _mask,
                                              mask_label = self.label_dict["glomerulus"])
         for i in range(50):
-            self._try_insert(img = _tubules_list[np.random.randint(0,len(_tubules_list))],
+            self._try_insert(img = self.augment(image = self._random_select(_tubules_list),
+                                                _transform = _transform),
                              canvas = _sub_canvas,
                              mask = _mask,
                              label = self.label_dict["proximal_tubule"],
-                             patience = 20)
+                             patience = self.patience)
         _mask = np.where(_mask == _circle_mask_label, 0, _mask)
         return self.crop_image(_sub_canvas), self.crop_image(_mask)
 
@@ -556,7 +689,7 @@ class collage_generator(object):
                  ):
         """
         the method to generate a new 3-channel collage and a mask
-        input:
+        args:
           item_num: int, the total number of items in this image
           ratio_list: list[float], the ratio of each cass, the number must be same to the labels
           background_color: bool, if True, will add a background color based on self.example_image
@@ -592,9 +725,12 @@ class collage_generator(object):
                                               mask = _mask,
                                               label = _cluster_mask,
                                               patience = self.patience,
-                                              mode = "pattern")
+                                              mode = "pattern",
+                                              initial_insert = (_num_count == 0),
+                                              secondary_insert = True)
         # -------------------------------artery, and arteriole------------------------------------
         # the rest ratio will be used for random selection
+        _transform = self._generate_augmentation(mode = "other")
         _ratio_list = _ratio_list[1:]
         _ratio_list = _ratio_list / np.sum(_ratio_list)
         _item_list = ["artery", 'arteriole']
@@ -612,24 +748,24 @@ class collage_generator(object):
               pass
             # if it's not empty
             else:
-              # choose a random images
-              _img = _image_list[np.random.randint(len(_image_list))]
-              _img_transformed = self.datagen.random_transform(_img)
               # append it to the canvas
-              _canvas, _mask = self._try_insert(img = _img_transformed,
+              _canvas, _mask = self._try_insert(img = self.augment(image = self._random_select(_image_list),
+                                                                   _transform = _transform),
                                                 canvas = _canvas,
                                                 mask = _mask,
                                                 label = _label_value,
-                                                patience = self.patience)
+                                                patience = self.patience,
+                                                secondary_insert = True)
         # -------------------------------------distal tubules-------------------------------------
+        _transform = self._generate_augmentation(mode = "distal_tubules")
         _image_list = self.image_list[self.label_dict["distal_tubule"]-1]
-        for _num_count in tqdm(np.arange(1000),
+        for _num_count in tqdm(np.arange(3000),
                                desc = "Appending distal_tubules...",
                                leave = False):
-            _img = _image_list[np.random.randint(len(_image_list))]
-            _img_transformed = _img#self.datagen.random_transform(_img)
+
             # append it to the canvas
-            _canvas, _mask = self._try_insert(img = _img_transformed,
+            _canvas, _mask = self._try_insert(img = self.augment(image = self._random_select(_image_list),
+                                                                 _transform = _transform),
                                               canvas = _canvas,
                                               mask = _mask,
                                               label = self.label_dict["distal_tubule"],
@@ -652,16 +788,16 @@ class collage_generator(object):
 
     def generate_hdf5(self,
                       hdf5_dataset_fname: str = "save.h5",
-                      length: int = 20,
-                      item_num: int = 200,
-                      vignettes_ratio_list: List[float] = [1.0,0.0],
+                      image_num: int = 20,
+                      item_num: int = 5,
+                      vignettes_ratio_dict: dict = {"cluster":0.2, "artery": 0.5, 'arteriole': 0.3},
                       background_color_ratio: float = 1.0):
         """
         a wrapper saving generated patches to hdf5 file, in current setting
-        it will be saved into 4 different hdf5_file
+        the mask will be saved into individual binary mask
 
         hdf5_dataset_fname: the example h5 filename, can be with or without .h5 extension
-        length: int, the number of image generated
+        image_num: int, the number of image generated
         item_num: int, most of time don't really need to work with
         vignettes_ratio_list: list of float, the ratio of each cass,
                                 the number must be same to the labels.
@@ -671,7 +807,7 @@ class collage_generator(object):
         generating:
            hdf5 file, image with binary mask for each class specified in the file name.
         """
-        assert length > 0
+        assert image_num > 0
         assert 0 <= background_color_ratio <= 1
         if hdf5_dataset_fname[-3:] == '.h5':
             hdf5_dataset_fname = hdf5_dataset_fname[:-3]
@@ -679,14 +815,13 @@ class collage_generator(object):
         # generate enough collage and mask
         _collage_list = []
         _mask_list = []
-        for _ctr in tqdm(range(length), desc = "generating...", leave = False):
-            _collage, _mask= self.generate(ratio_list = vignettes_ratio_list,
-                                           background_color = \
-                                           np.random.binomial(size=1,
-                                                              n=1,
-                                                              p=background_color_ratio)[0],
-                                           return_dict = False
-                                           )
+        for _ctr in tqdm(range(image_num), desc = "generating...", leave = False):
+            _collage, _mask= self.generate(
+                item_num = item_num,
+                ratio_dict = vignettes_ratio_dict,
+                background_color = np.random.binomial(size=1,n=1,p=background_color_ratio)[0],
+                return_dict = False
+                )
             _collage_list.append(_collage)
 
             _mask_list.append(_mask)

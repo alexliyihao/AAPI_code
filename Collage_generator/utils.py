@@ -6,7 +6,7 @@ import matplotlib.patches as mpatches
 
 def extract_image(filename: str):
     """
-    extract the image from the mask
+    extract the image from the mask, used for cvat results
     for colab using, the input is designed for situation where default path have
     both "SegmentationObject" and "JPEGImages" folders
     input:
@@ -38,17 +38,17 @@ def crop_image(img):
     return img[_ys:_yf,_xs:_xf]
 
 def import_git_images():
-  """
-  directly import all the images, assume that the github repo is in your current working directory
+    """
+    directly read all the images, assume that the github repo is in your current working directory
 
-  return:
+    return:
     image_list: 2D list of RGB np.ndarray, each label will have a individual list
     class_name_list: 1D list of string, number of label
-  """
-  _import_path = os.path.join(os.getcwd(), "vignettes")
-  _label_list = []
-  _image_list = []
-  for i in os.listdir(_import_path):
+    """
+    _import_path = os.path.join(os.getcwd(), "vignettes")
+    _label_list = []
+    _image_list = []
+    for i in os.listdir(_import_path):
       if i == "notes.docx":
         continue
       else:
@@ -59,7 +59,7 @@ def import_git_images():
           _image_list[-1].append(np.array(Img.open(os.path.join(_import_path, i, j)).convert("RGB"), dtype="uint8"))
         except:
           continue
-  return _image_list, _label_list
+    return _image_list, _label_list
 
 def visualize_result(collage, mask, dictionary):
     """

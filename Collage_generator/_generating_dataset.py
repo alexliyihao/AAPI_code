@@ -1,43 +1,12 @@
 import torch
 import numpy as np
-from torch.utils.data import Dataset
 from torchvision import transforms
-from .collage_generator import collage_generator
 
 """
-a torch dataset completely based on a collage_generator, just saved for references for now
+a torch dataset completely based on a collage_generator, deprecated, just saved for references for now
 """
 
-class generating_dataset(Dataset):
-    """
-    a supervised dataset specifically designed for this task
-    """
-    def __init__(self,
-                 collage_generator,
-                 dataset_size,
-                 vignettes_ratio_list = [0.8,0.07,0.06,0.07],
-                 background_color_ratio = 1.0):
-        """
-        the init of dataset:
-        """
-        super(generating_dataset, self).__init__()
-        self._image_transformation = transforms.ToTensor()
-        # load the collage_generator inside the dataset
-        self._col_gen = collage_generator
-        self._dataset_size = dataset_size
-        self._vignettes_ratio_list = vignettes_ratio_list
-        self._background_color_ratio = background_color_ratio
-        self._collage_data = None
-        self._mask_data = None
-        for ctr in tqdm(range(dataset_size), desc = "generating..."):
-            self._add_image()
-
-    def __len__(self):
-        return self._dataset_size
-
-    def __getitem__(self, idx):
-        return (self._collage_data[idx], self._mask_data[idx])
-
+class _generating_dataset():
     def _mask_to_binary(self, mask):
         """
         convert a integer mask to binary form
