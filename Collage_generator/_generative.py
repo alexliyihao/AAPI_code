@@ -114,7 +114,7 @@ class _generative():
                                              mask = _mask,
                                              mask_label = self.label_dict["glomerulus"])
         # have the proximal tubule around
-        for i in range(50):
+        for i in range(500):
             self._try_insert(img = self._augment(image = self._random_select(_tubules_list),
                                                 _transform = _transform),
                              canvas = _sub_canvas,
