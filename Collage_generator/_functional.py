@@ -52,7 +52,7 @@ class _functional():
                 size_okay = False
                 while (not size_okay):
                     # resize it and preview
-                    read_in.thumbnail(size,resample = Img.NEAREST）
+                    read_in.thumbnail(size,resample = Img.NEAREST)
                     np_img = np.array(read_in)
                     plt.imshow(self._single_image_preview(np_img,
                                                         canvas_size = self.canvas_size))
