@@ -46,14 +46,12 @@ class _functional():
             read_in = self._unify_image_format(img, output_format = "PIL")
             # confirm the correct size of the image
             if pre_determined_size == True:
-                read_in.thumbnail(size,resample = Img.NEAREST)
-                np_img = np.array(read_in)
+                np_img = np.array(self._resize(read_in,*size))
             else:
                 size_okay = False
                 while (not size_okay):
                     # resize it and preview
-                    read_in.thumbnail(size,resample = Img.NEAREST)
-                    np_img = np.array(read_in)
+                    np_img = np.array(self._resize(read_in,*size))
                     plt.imshow(self._single_image_preview(np_img,
                                                         canvas_size = self.canvas_size))
                     plt.show()
@@ -82,6 +80,27 @@ class _functional():
         self.image_list[self.label_dict[label]-1].append(np_img)
         self.max_component_size = np.max(np.vstack((self.max_component_size, size)), axis = 0)
         print(f'image succesfully added to label "{label}" with size {size}')
+
+    def _resize(self, image_pil, width, height):
+        '''
+        Resize PIL image keeping ratio and using white background.
+        from https://stackoverflow.com/questions/44370469/python-image-resizing-keep-proportion-add-white-background
+        '''
+        ratio_w = width / image_pil.width
+        ratio_h = height / image_pil.height
+        if ratio_w < ratio_h:
+            # It must be fixed by width
+            resize_width = width
+            resize_height = round(ratio_w * image_pil.height)
+        else:
+            # Fixed by height
+            resize_width = round(ratio_h * image_pil.width)
+            resize_height = height
+        image_resize = image_pil.resize((resize_width, resize_height), Image.NEAREST)
+        background = PIL.Image.new('RGB', (width, height), (0, 0, 0))
+        offset = (round((width - resize_width) / 2), round((height - resize_height) / 2))
+        background.paste(image_resize, offset)
+        return background
 
     def _single_image_preview(self, img: np.ndarray, canvas_size: Tuple[int,int] = (1,1)):
         """
