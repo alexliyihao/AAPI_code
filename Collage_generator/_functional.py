@@ -114,35 +114,35 @@ class _functional():
                         self.add_image(img = os.path.join(root_path, label, img),
                                       label = label,
                                       original_image_size = False,
-                                      size = (80,80),
+                                      size = (250,250),
                                       pre_determined_size = True
                                       )
                     elif label == "artery":
                         self.add_image(img = os.path.join(root_path, label, img),
                                       label = label,
                                       original_image_size = False,
-                                      size = (300,300),
+                                      size = (700,700),
                                       pre_determined_size = True
                                       )
                     elif label == "glomerulus":
                         self.add_image(img = os.path.join(root_path, label, img),
                                       label = label,
                                       original_image_size = False,
-                                      size = (300,300),
+                                      size = (700,700),
                                       pre_determined_size = True
                                       )
                     elif label == "proximal_tubule":
                         self.add_image(img = os.path.join(root_path, label, img),
                                       label = label,
                                       original_image_size = False,
-                                      size = (150,150),
+                                      size = (250,250),
                                       pre_determined_size = True
                                       )
                     elif label == "distal_tubule":
                         self.add_image(img = os.path.join(root_path, label, img),
                                       label = label,
                                       original_image_size = False,
-                                      size = (200,200),
+                                      size = (700,700),
                                       pre_determined_size = True
                                       )
                 #else:
