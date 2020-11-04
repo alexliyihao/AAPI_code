@@ -46,12 +46,12 @@ class _functional():
             read_in = self._unify_image_format(img, output_format = "PIL")
             # confirm the correct size of the image
             if pre_determined_size == True:
-                np_img = np.array(read_in.resize(size,resample = Img.NEAREST))
+                np_img = np.array(read_in.thumbnail(size,resample = Img.NEAREST))
             else:
                 size_okay = False
                 while (not size_okay):
                     # resize it and preview
-                    np_img = np.array(read_in.resize(size,resample = Img.NEAREST))
+                    np_img = np.array(read_in.thumbnail(size,resample = Img.NEAREST))
                     plt.imshow(self._single_image_preview(np_img,
                                                         canvas_size = self.canvas_size))
                     plt.show()
@@ -105,7 +105,7 @@ class _functional():
           root_path: the root path loading images
         """
         for label in sorted(os.listdir(root_path)):
-            if label == "background.png" or label == ".ipynb_checkpoint" or label == ".DS_Store":
+            if label == "background" or label == ".ipynb_checkpoint" or label == ".DS_Store":
               continue
             self.add_label(new_label = label)
             for img in os.listdir(os.path.join(root_path, label)):
