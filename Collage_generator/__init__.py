@@ -22,8 +22,8 @@ class collage_generator(_augmentation, _functional, _generative, _insertion, _ut
 
     def __init__(self,
                  label_list: List[str] = ["class_one", "class_two"],
-                 canvas_size: Tuple[int,int] = (1024,1024),
-                 cluster_size: Tuple[int,int] = (500,500),
+                 canvas_size: Tuple[int,int] = (3000,3000),
+                 cluster_size: Tuple[int,int] = (1800,1800),
                  example_image: str = "",
                  patience: int = 100,
                  gaussian_noise_constant: float = 15.0,
