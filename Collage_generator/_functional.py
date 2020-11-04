@@ -172,3 +172,46 @@ class _functional():
                 #                  original_image_size = True)
                 except:
                   continue
+def import_images_from_directory_original_size(self, root_path):
+    """
+    directly import all the images class under root_path
+    arg:
+      root_path: the root path loading images
+    """
+    for label in sorted(os.listdir(root_path)):
+        if label == "background" or label == ".ipynb_checkpoint" or label == ".DS_Store":
+          continue
+        self.add_label(new_label = label)
+        for img in os.listdir(os.path.join(root_path, label)):
+            try:
+                if label == "arteriole":
+                    self.add_image(img = os.path.join(root_path, label, img),
+                                  label = label,
+                                  original_image_size = True
+                                  )
+                elif label == "artery":
+                    self.add_image(img = os.path.join(root_path, label, img),
+                                  label = label,
+                                  original_image_size = True
+                                  )
+                elif label == "glomerulus":
+                    self.add_image(img = os.path.join(root_path, label, img),
+                                  label = label,
+                                  original_image_size = True
+                                  )
+                elif label == "proximal_tubule":
+                    self.add_image(img = os.path.join(root_path, label, img),
+                                  label = label,
+                                  original_image_size = True
+                                  )
+                elif label == "distal_tubule":
+                    self.add_image(img = os.path.join(root_path, label, img),
+                                  label = label,
+                                  original_image_size = True
+                                  )
+            #else:
+            #    self.add_image(img = os.path.join(root_path, label, img),
+            #                  label = label,
+            #                  original_image_size = True)
+            except:
+              continue
