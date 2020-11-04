@@ -46,12 +46,14 @@ class _functional():
             read_in = self._unify_image_format(img, output_format = "PIL")
             # confirm the correct size of the image
             if pre_determined_size == True:
-                np_img = np.array(read_in.thumbnail(size,resample = Img.NEAREST))
+                read_in.thumbnail(size,resample = Img.NEAREST)
+                np_img = np.array(read_in)
             else:
                 size_okay = False
                 while (not size_okay):
                     # resize it and preview
-                    np_img = np.array(read_in.thumbnail(size,resample = Img.NEAREST))
+                    read_in.thumbnail(size,resample = Img.NEAREST）
+                    np_img = np.array(read_in)
                     plt.imshow(self._single_image_preview(np_img,
                                                         canvas_size = self.canvas_size))
                     plt.show()
