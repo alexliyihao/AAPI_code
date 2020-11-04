@@ -96,8 +96,8 @@ class _functional():
             # Fixed by height
             resize_width = round(ratio_h * image_pil.width)
             resize_height = height
-        image_resize = image_pil.resize((resize_width, resize_height), Image.NEAREST)
-        background = PIL.Image.new('RGB', (width, height), (0, 0, 0))
+        image_resize = image_pil.resize((resize_width, resize_height), Img.NEAREST)
+        background = Img.new('RGB', (width, height), (0, 0, 0))
         offset = (round((width - resize_width) / 2), round((height - resize_height) / 2))
         background.paste(image_resize, offset)
         return background
