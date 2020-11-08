@@ -117,7 +117,7 @@ class Extractor:
         return img_patches
 
 
-def extract_img_patches(img_path: Union[Path, str],
+def extract_img_patches(img: Union[Path, str, np.ndarray],
                         extractor: Extractor):
     """
     Helper function for extracting patches from raw images
@@ -127,9 +127,10 @@ def extract_img_patches(img_path: Union[Path, str],
 
     Parameters
     ----------
-    img_path : str or Path
-        path to the image file
-    extractor: Extractor
+    img_path : str or Path or numpy array
+        path to the image file OR
+         an image already loaded in memory as numpy array
+    extractor : Extractor
         an instance of Extractor class with parameter specified;
         caller function should use the same one with
         the one used in the "extract_mask_patches" function
@@ -143,9 +144,13 @@ def extract_img_patches(img_path: Union[Path, str],
 
 
     """
-    img_path = str(img_path)
-    # change the order of channels from cv2 format to numpy format
-    img = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2RGB)
+    if isinstance(img, str) or isinstance(img, Path):
+        img_path = str(img)
+        # change the order of channels from cv2 format to numpy format
+        img = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2RGB)
+
+    if isinstance(img, Image.Image):
+        img = np.array(img)
 
     img_patches = extractor.extract_patches(img)
 

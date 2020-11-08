@@ -1,4 +1,5 @@
 import torch
+from torch.utils.data import DataLoader, ConcatDataset
 import torchvision
 
 from matplotlib import pyplot as plt
@@ -11,6 +12,7 @@ class Dataset(torch.utils.data.Dataset):
     """
     Create a custom dataset object compatible with torch dataloader
     """
+
     def __init__(self,
                  hdf5_fpath,
                  aug_transform=None,
@@ -118,3 +120,32 @@ def visualize_one_sample(dataset: Dataset, index: int, positive_only=False):
     plt.tight_layout()
     plt.close()
     return fig
+
+
+def create_dataloader(hdf5_fpath,
+                      transform=None,
+                      batch_size=16,
+                      use_edge_mask=True,
+                      num_workers=4,
+                      shuffle=True,
+                      return_dataset=False):
+
+    if type(hdf5_fpath) == list and len(hdf5_fpath) > 1:
+        # generate concat dataset
+        datasets = [Dataset(path, transform, use_edge_mask) for path in hdf5_fpath]
+        dataset = ConcatDataset(datasets)
+
+    elif type(hdf5_fpath) == list:
+        assert len(hdf5_fpath) == 1, "Input HDF5 file path list is empty."
+        dataset = Dataset(hdf5_fpath[0], transform, use_edge_mask)
+
+    else:
+        dataset = Dataset(hdf5_fpath, transform, use_edge_mask)
+
+    dataloader = DataLoader(dataset,
+                            batch_size=batch_size,
+                            shuffle=shuffle,
+                            num_workers=num_workers,
+                            pin_memory=True)
+
+    return (dataloader, dataset) if return_dataset else dataloader
