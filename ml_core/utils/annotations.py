@@ -1,12 +1,15 @@
 from lxml import etree, objectify
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, LineString, box
 from shapely.affinity import affine_transform
 import cv2
 import numpy as np
 from pandas import DataFrame
+from scipy.cluster.hierarchy import ward, fcluster
+from scipy.spatial.distance import pdist
 from PIL import ImageColor
 from collections import defaultdict
 from typing import List
+from itertools import chain
 
 
 class ASAPAnnotation:
@@ -196,7 +199,11 @@ def load_annotations_from_halo_xml(xml_path):
             xy_coordinates = [(int(v.get("X")), int(v.get("Y")))
                               for v in region.Vertices.getchildren()]
 
-            asap_annotation = ASAPAnnotation(geometry=Polygon(xy_coordinates),
+            region_type = region.get("Type")
+            geometry = box(*chain.from_iterable(xy_coordinates)) if region_type == "Rectangle" \
+                        else Polygon(xy_coordinates)
+
+            asap_annotation = ASAPAnnotation(geometry=geometry,
                                              annotation_name=f"{group_name}_{i}",
                                              group_name=group_name,
                                              render_color=group_color)
@@ -303,7 +310,7 @@ def mask_to_annotation(mask,
                        upper_left_coordinates,
                        level,
                        level_factor=4,
-                       min_area=10):
+                       min_area=100):
     """
     Convert a mask (uint8 array-like) to list of annotations,
     in order to render on ASAP frontend
@@ -363,7 +370,7 @@ def mask_to_annotation(mask,
     
     for label_row in label_info.itertuples():
 
-        if label_row.label == 0:
+        if label_row.label_name == "Background":
             # skip the background
             continue
 
@@ -436,3 +443,61 @@ def merge_annotations(annotations_group: List[List[ASAPAnnotation]]):
         merged_annotations += annotations
 
     return merged_annotations
+
+
+def create_covering_rectangles(annotations, size, verbose):
+    polygons = [a.geometry for a in annotations]
+    centroids = np.array([tuple(p.centroid.coords)[0] for p in polygons])
+
+    if len(centroids) > 1:
+        Z = ward(pdist(centroids))
+        clusters = fcluster(Z, t=size / 2, criterion='distance')
+    else:
+        clusters = np.array([1], dtype=np.int32)
+
+    cluster_inv = {}
+    cluster_inv_verbose = {}
+
+    for i, cid in enumerate(clusters):
+        if cid in cluster_inv:
+            cluster_inv[cid].append(polygons[i])
+            cluster_inv_verbose[cid].append(annotations[i].annotation_name)
+        else:
+            cluster_inv[cid] = [polygons[i]]
+            cluster_inv_verbose[cid] = [annotations[i].annotation_name]
+
+    if verbose:
+        print(cluster_inv_verbose)
+
+    upper_left_coords = []
+
+    for cid, polys in cluster_inv.items():
+        if len(polys) == 1:
+            center = list(polys[0].centroid.coords)[0]
+        elif len(polys) == 2:
+            center = list(LineString([p.centroid for p in polys]).centroid.coords)[0]
+        else:
+            center = list(Polygon([p.centroid for p in polys]).centroid.coords)[0]
+
+        upper_left = int(center[0] - size / 2), int(center[1] - size / 2)
+        lower_right = int(center[0] + size / 2), int(center[1] + size / 2)
+
+        bbox = box(*upper_left, *lower_right)
+
+        assert np.all([p.within(bbox) for p in polys]), f"Cannot cover all polygons for cid {cid}."
+
+        upper_left_coords.append(upper_left)
+
+    return upper_left_coords
+
+
+def get_component_sizes(annotations: List[ASAPAnnotation]):
+    component_sizes = defaultdict(list)
+
+    for annotation in annotations:
+        component_sizes[annotation.group_name].append(annotation.geometry.area)
+
+    for component in component_sizes:
+        component_sizes[component].sort()
+
+    return component_sizes

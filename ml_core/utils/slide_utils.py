@@ -7,9 +7,11 @@ import matplotlib.patches as mpatches
 import numpy as np
 from itertools import product
 from functools import reduce
+from PIL import Image
 from skimage.filters import threshold_otsu
 from tqdm import tqdm
 
+from .annotations import create_covering_rectangles, annotation_to_mask
 
 
 LEVEL_BASE = 4
@@ -143,3 +145,47 @@ def crop_ROI_from_slide(slide_path, save_dir, size, stride, level, annotation_fi
                                              width=size, height=size)
         if check_patch_include_tissue(slide_patch, otsu_thresh):
             slide_patch.save(save_dir / f"ROI_{(offset_x, offset_y)}.png")
+
+
+def crop_ROI_using_annotations(slide_path,
+                               save_dir,
+                               annotations,
+                               class_name,
+                               section_size,
+                               verbose):
+    filtered_annotations = list(filter(lambda a: a.group_name == class_name, annotations))
+    if len(filtered_annotations) == 0:
+        print(f"Cannot find any annotations with class {class_name}")
+        return None
+
+    upper_left_coords = create_covering_rectangles(filtered_annotations, verbose=verbose, size=section_size)
+
+    # currently supports binary mask only
+    label_info = pd.DataFrame({"label_name": [class_name],
+                               "label": [1],
+                               "color": "#ff0000"})
+
+    slide = read_slide(str(slide_path))
+
+    class_root = save_dir / class_name
+    class_root.mkdir(exist_ok=True)
+
+    for i, upper_left in enumerate(upper_left_coords):
+        mask = annotation_to_mask(filtered_annotations,
+                                  label_info=label_info,
+                                  upper_left_coordinates=upper_left,
+                                  mask_shape=(section_size, section_size),
+                                  level=0)
+        assert mask.max() > 0
+        #         assert np.all(mask[..., 0] == mask[..., 1]) and np.all(mask[..., 0] == mask[..., 2])
+
+        img = read_region_from_slide(slide,
+                                     x=upper_left[0],
+                                     y=upper_left[1],
+                                     level=0,
+                                     width=section_size,
+                                     height=section_size,
+                                     relative_coordinate=True)
+
+        Image.fromarray(mask).save(class_root / f"HE_{i:03d}_mask_{upper_left}.png")
+        img.save(class_root / f"HE_{i:03d}_{upper_left}.png")
