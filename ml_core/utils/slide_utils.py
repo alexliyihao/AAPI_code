@@ -9,9 +9,12 @@ from itertools import product
 from functools import reduce
 from PIL import Image
 from skimage.filters import threshold_otsu
+import cv2
 from tqdm import tqdm
+from shapely.geometry import Polygon, box
 
-from .annotations import create_covering_rectangles, annotation_to_mask
+
+from .annotations import create_covering_rectangles, annotation_to_mask, mask_to_polygon
 
 
 LEVEL_BASE = 4
@@ -55,7 +58,7 @@ def read_full_slide_by_level(slide_path, level):
 def get_slides_meta_info(slide_paths, mask_paths=None, output_path=None):
     if mask_paths is None:
         mask_paths = [None for _ in slide_paths]
-    
+
     max_level = max([len(open_slide(str(s)).level_dimensions) for s in slide_paths])
 
     meta_data = {"id": [], "has_tumor": []}
@@ -90,33 +93,6 @@ def get_slides_meta_info(slide_paths, mask_paths=None, output_path=None):
     return meta_info
 
 
-def get_connected_regions_from_tumor_slides(mask_path, verbose=False, mask_level=HIGHEST_LEVEL):
-    mask = read_full_slide_by_level(mask_path, level=mask_level)
-    mask = np.array(mask.getchannel(0))
-    mask = mask.T # transpose to be consistent with the shape of slide
-    labeled_mask = measure.label(mask, connectivity=2)
-    bbox_list = []
-    for region in measure.regionprops(labeled_mask):
-        bbox_list.append(region.bbox)
-
-    if verbose:
-        # show the bounding box and region on the mask
-        fig, ax = plt.subplots(ncols=1, nrows=1, figsize=(6, 6))
-        label_overlay = color.label2rgb(labeled_mask, image=mask)
-        ax.imshow(label_overlay)
-
-        for bbox in bbox_list:
-            # draw rectangle around segmented coins
-            minr, minc, maxr, maxc = bbox
-            rect = mpatches.Rectangle((minc, minr), maxc - minc, maxr - minr,
-                                      fill=False, edgecolor='red', linewidth=2)
-            ax.add_patch(rect)
-
-        plt.show()
-
-    return bbox_list
-
-
 def check_patch_include_tissue(patch, otsu_thresh):
     # detect tissue regions having pixels with H, S, V >= otsu_threshold
     hsv_patch = patch.convert("HSV")
@@ -125,7 +101,7 @@ def check_patch_include_tissue(patch, otsu_thresh):
     return np.sum(tissue_mask) > 0.15 * reduce(lambda a,b: a*b, tissue_mask.shape)
 
 
-def crop_ROI_from_slide(slide_path, save_dir, size, stride, level, annotation_file=None):
+def crop_ROI_from_slide(slide_path, save_dir, size, stride, level):
 
     slide = read_slide(str(slide_path))
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -145,6 +121,45 @@ def crop_ROI_from_slide(slide_path, save_dir, size, stride, level, annotation_fi
                                              width=size, height=size)
         if check_patch_include_tissue(slide_patch, otsu_thresh):
             slide_patch.save(save_dir / f"ROI_{(offset_x, offset_y)}.png")
+
+
+def generate_patches_coords(width, height, patch_size, stride, pad_size):
+    def get_edge_count(length):
+        return (2 * pad_size + length - patch_size) // stride + 1
+
+    row_count = get_edge_count(height)
+    col_count = get_edge_count(width)
+
+    output_indices = np.unravel_index(range(row_count * col_count), (row_count, col_count))  # (hids, wids)
+    output_indices = np.column_stack(output_indices)  # (hid, wid) pairs
+    output_coords = output_indices * stride - pad_size # coord = id * stride - pad
+    output_coords = np.column_stack([output_coords[:, 1], output_coords[:, 0]]) # change (y, x) to (x, y)
+    return output_coords
+
+
+def get_biopsy_contours(image):
+    # detect biopsy regions: Otsu's thresholding after Gaussian filtering
+    blur = cv2.GaussianBlur(np.array(image), (25, 25), 0)
+    grayscale_blur = cv2.cvtColor(blur, cv2.COLOR_RGB2GRAY)
+    ret3, th3 = cv2.threshold(grayscale_blur, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    cv2.bitwise_not(th3, th3)  # invert the foreground and background
+    region_polygons = mask_to_polygon(th3, min_area=10000)
+    return region_polygons
+
+
+def get_biopsy_covered_patches_coords(biopsy_contour, width, height, patch_size, stride, pad_size):
+    # get patches coords
+    all_patch_coords = generate_patches_coords(width, height, patch_size, stride, pad_size)
+    patch_boxes = [box(coords[0], coords[1], coords[0] + patch_size, coords[1] + patch_size)
+                   for coords in all_patch_coords]
+
+    biopsy_covered_patches_coords = []
+
+    for patch_box, patch_coord in zip(patch_boxes, all_patch_coords):
+        if patch_box.intersects(biopsy_contour):
+            biopsy_covered_patches_coords.append(patch_coord)
+
+    return biopsy_covered_patches_coords
 
 
 def crop_ROI_using_annotations(slide_path,

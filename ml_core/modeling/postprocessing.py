@@ -1,4 +1,5 @@
 import configparser
+from typing import List
 
 from torch.utils.data import TensorDataset, DataLoader
 import torch
@@ -11,12 +12,14 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
+from shapely.geometry import Polygon
+from shapely.affinity import affine_transform
 
 from ml_core.preprocessing.patches_extraction import extract_img_patches, Extractor
 from ml_core.utils.annotations import mask_to_annotation
 from ml_core.modeling.unet import UNet
-from ml_core.utils.slide_utils import read_full_slide_by_level
-
+from ml_core.utils.slide_utils import read_full_slide_by_level, generate_patches_coords, get_biopsy_contours, \
+    get_biopsy_covered_patches_coords
 
 """
 ========= Morphological Postprocessing on Masks ====================
@@ -37,29 +40,24 @@ def enhance_heatmap(heatmap):
 ========= Produce Inferenced Masks from Trained Models ==========
 """
 
-def construct_inference_dataloader(ROI, extractor, batch_size):
-    """
-    Create PyTorch dataloader using image in memory
 
-    Parameters
-    ----------
-    ROI
-    extractor
-    batch_size
-
-    Returns
-    -------
-
-    """
-    patches, indices = extract_img_patches(img=ROI, extractor=extractor)  # don't apply any filtering
+def construct_inference_dataloader_from_patches(patches, batch_size):
     patches_tensor = torch.stack(list(map(lambda img: torchvision.transforms.ToTensor()(img), patches)))
     dataset = TensorDataset(patches_tensor)
     dataloader = DataLoader(dataset, batch_size=batch_size, pin_memory=True)
     return dataloader
 
 
+def construct_inference_dataloader_from_ROI(ROI, extractor, batch_size):
+    patches, indices = extract_img_patches(img=ROI, extractor=extractor)
+    return construct_inference_dataloader_from_patches(patches, batch_size)
+
+
 def load_model_from_checkpoint(ckpt_path, model_class: LightningModule = UNet):
-    return model_class.load_from_checkpoint(ckpt_path) if Path(ckpt_path).exists() else None
+    model = model_class.load_from_checkpoint(ckpt_path) if Path(ckpt_path).exists() else None
+    if model is not None and torch.cuda.is_available():
+        model.to(torch.device("cuda"))
+    return model
 
 
 def predict_with_model(model: LightningModule, dataloader):
@@ -90,26 +88,22 @@ def predict_with_model(model: LightningModule, dataloader):
     return model_output
 
 
-def generate_heatmap(image, output, extractor: Extractor, threshold=0.5):
+def generate_heatmap(image, output, extractor: Extractor, output_coords=None, threshold=0.5):
     width, height = image.size
-    resized_width, resized_height = int(width * extractor.resize), int(width * extractor.resize)
+    resized_width, resized_height = int(width * extractor.resize), int(height * extractor.resize)
 
-    def get_edge_count(length):
-        return (2 * extractor.mirror_pad_size + length - extractor.patch_size) // extractor.stride_size + 1
+    if output_coords is None:
+        output_coords = generate_patches_coords(resized_width,
+                                                resized_height,
+                                                extractor.patch_size,
+                                                extractor.stride_size,
+                                                extractor.mirror_pad_size)
 
-    row_count = get_edge_count(resized_height)
-    col_count = get_edge_count(resized_width)
-    assert row_count * col_count == len(output), "Patch count changes after unraveling."
-
-    row_count = int(np.sqrt(len(output)))
-    col_count = row_count
-    output_indices = np.unravel_index(range(len(output)), (row_count, col_count), "F")  # (rows, cols)
-    output_indices = np.column_stack(output_indices)  # (row, col) pairs
-    output_indices = output_indices * extractor.stride_size - extractor.mirror_pad_size
+    assert len(output_coords) == len(output), "Patches count doesn't match with the coordinates count."
 
     heatmap = Image.new("L", (resized_width, resized_height))
 
-    for output_prob, (x, y) in zip(output, output_indices):
+    for output_prob, (x, y) in zip(output, output_coords):
         existing_area = np.array(heatmap.crop((x, y, x + output_prob.shape[0], y + output_prob.shape[1])))
         # output_prob *= 255
         output_prob[output_prob < threshold] = 0
@@ -136,7 +130,8 @@ def load_label_info_from_config(config_file):
     label_info = pd.DataFrame()
     for section_name in config.sections():
         section = config[section_name]
-        section["model_path"] = str(Path(config[section_name]["model_root"]) / f"{section_name}_best_model.ckpt")
+        model_root = Path(config_file).parent / Path(config[section_name]["model_root"])
+        section["model_path"] = str(model_root / f"{section_name}_best_model.ckpt")
         section["label_name"] = section_name
         section["extractor_config_name"] = f"AAPI_{section_name}"
         label_info = label_info.append(dict(section), ignore_index=True)
@@ -156,7 +151,6 @@ def predict_on_ROI(ROIs,
                    verbose=False,
                    input_ROI_level=0,
                    level_base=4):
-
     annotations = []
     predicted_masks = []
 
@@ -188,15 +182,15 @@ def predict_on_ROI(ROIs,
             model = row.model
             model.freeze()
 
-            dataloader = construct_inference_dataloader(ROI, extractor, batch_size)
+            dataloader = construct_inference_dataloader_from_ROI(ROI=ROI, extractor=extractor, batch_size=batch_size)
             output = predict_with_model(model, dataloader)
-            heatmap = generate_heatmap(ROI, output, extractor, row.threshold)
+            heatmap = generate_heatmap(ROI, output, extractor, threshold=row.threshold)
             heatmap = enhance_heatmap(heatmap)
             mask = np.zeros_like(heatmap)
             mask[heatmap != 0] = row.label
 
             min_area = row.min_size // (level_base ** input_ROI_level)
-            annotation.extend(mask_to_annotation(mask, label_info, upper_left, level=0, min_area=min_area))
+            annotation.extend(mask_to_annotation(mask, label_info, upper_left, mask_level=0, min_area=min_area))
             predicted_mask.append(mask)
 
         # mask = np.argmax(agg_heatmap, axis=2).squeeze()
@@ -214,10 +208,76 @@ def predict_on_ROI(ROIs,
 def predict_on_WSI(slide_path,
                    label_info,
                    batch_size=64,
-                   verbose=False):
+                   level_base=4,
+                   callback=None):
 
-    whole_slide_ROI = read_full_slide_by_level(slide_path, 1)
-    return predict_on_ROI([whole_slide_ROI], [(0, 0)], label_info,
-                          batch_size=batch_size,
-                          verbose=verbose,
-                          input_ROI_level=1)
+    whole_slide_level_1: Image = read_full_slide_by_level(slide_path, level=1)
+    level_1_width, level_1_height = whole_slide_level_1.size
+    thumbnail = whole_slide_level_1.resize((level_1_width // level_base, level_1_height // level_base))
+
+    biopsy_contours: List[Polygon] = get_biopsy_contours(thumbnail)
+    # remap to level 1 coordinates
+    biopsy_contours = [affine_transform(c, [level_base, 0, 0, level_base, 0, 0]) for c in biopsy_contours]
+
+    annotations = [[] for _ in range(len(biopsy_contours))]
+    predicted_masks = [[] for _ in range(len(biopsy_contours))]
+
+    for biopsy_id, biopsy_contour in enumerate(tqdm(biopsy_contours)):
+
+        bbox = biopsy_contour.bounds
+
+        maxx_level_0 = bbox[0] * level_base
+        maxy_level_0 = bbox[1] * level_base
+
+        ROI: Image = whole_slide_level_1.crop(bbox)
+        width, height = ROI.size
+
+        for layer_index, row in enumerate(label_info.itertuples()):
+            extractor = Extractor(config_section_name=row.extractor_config_name)
+            extractor.resize = extractor.resize * level_base  # change level from 0 to 1
+
+            resized_width, resized_height = int(width * extractor.resize), int(height * extractor.resize)
+            resized_ROI = ROI.resize((resized_width, resized_height))
+
+            resized_contour = affine_transform(biopsy_contour, [1, 0, 0, 1, -bbox[0], -bbox[1]])
+            resized_contour = affine_transform(resized_contour, [extractor.resize, 0, 0, extractor.resize, 0, 0])
+
+            # resize level: same as resized_contour
+            # origin point: upper left of resized_contour
+            covered_coords = get_biopsy_covered_patches_coords(resized_contour,
+                                                               resized_width,
+                                                               resized_height,
+                                                               extractor.patch_size,
+                                                               extractor.stride_size,
+                                                               0)
+
+            patches = [resized_ROI.crop((coord[0],
+                                         coord[1],
+                                         coord[0] + extractor.patch_size,
+                                         coord[1] + extractor.patch_size))
+                       for coord in covered_coords]
+
+            dataloader = construct_inference_dataloader_from_patches(patches, batch_size)
+
+            model: LightningModule = row.model
+            model.freeze()
+            output = predict_with_model(model, dataloader)
+
+            heatmap = generate_heatmap(ROI, output, extractor, output_coords=covered_coords, threshold=row.threshold)
+            heatmap = enhance_heatmap(heatmap)
+            mask = np.zeros_like(heatmap)
+            mask[heatmap != 0] = row.label
+
+            min_area = row.min_size // level_base
+
+            annotations[biopsy_id].extend(mask_to_annotation(mask,
+                                                             label_info,
+                                                             (maxx_level_0, maxy_level_0),
+                                                             mask_level=1,
+                                                             min_area=min_area,
+                                                             level_factor=level_base))
+            predicted_masks[biopsy_id].append(mask)
+
+            del patches, resized_ROI, dataloader
+
+    return predicted_masks, annotations

@@ -305,15 +305,35 @@ def annotation_to_mask(annotations,
     return img_mask
 
 
+def mask_to_polygon(binary_mask, min_area):
+    image, contours, hierarchy = cv2.findContours(cv2.convertScaleAbs(binary_mask),
+                                                  cv2.RETR_EXTERNAL,
+                                                  cv2.CHAIN_APPROX_TC89_L1)
+
+    if not contours:
+        return None
+
+    # only use the shell to construct polygons,
+    # since the frontend doesn't support annotations with holes
+    all_polygons = []
+    for idx, cnt in enumerate(contours):
+        if cv2.contourArea(cnt) >= min_area:
+            assert cnt.shape[1] == 1
+            poly = Polygon(shell=cnt[:, 0, :])
+            all_polygons.append(poly)
+    return all_polygons
+
+
 def mask_to_annotation(mask,
                        label_info,
                        upper_left_coordinates,
-                       level,
+                       mask_level,
                        level_factor=4,
                        min_area=100):
     """
     Convert a mask (uint8 array-like) to list of annotations,
-    in order to render on ASAP frontend
+    in order to render on ASAP frontend.
+    The output mask level is always 0 (the base level).
     Inspired from: https://michhar.github.io/masks_to_polygons_and_back/
 
     Parameters
@@ -330,8 +350,9 @@ def mask_to_annotation(mask,
     upper_left_coordinates : tuple(float, float)
         coordinate of upper left point of the mask,
         defined in level-0 coordinate system of original slide
-    level : int
-        custom level to generate annotations, higher level indicates lower resolution
+    mask_level : int
+        input mask level
+
     level_factor : int
         downsampling factor between every two adjacent levels
     min_area : int
@@ -343,27 +364,9 @@ def mask_to_annotation(mask,
         list of annotations with custom data structure
     """
 
-    def mask_to_polygon(binary_mask):
-        image, contours, hierarchy = cv2.findContours(cv2.convertScaleAbs(binary_mask),
-                                                      cv2.RETR_EXTERNAL,
-                                                      cv2.CHAIN_APPROX_TC89_L1)
-
-        if not contours:
-            return None
-
-        # only use the shell to construct polygons,
-        # since the frontend doesn't support annotations with holes
-        all_polygons = []
-        for idx, cnt in enumerate(contours):
-            if cv2.contourArea(cnt) >= min_area:
-                assert cnt.shape[1] == 1
-                poly = Polygon(shell=cnt[:, 0, :])
-                all_polygons.append(poly)
-        return all_polygons
-
     annotations = []
     upper_left_x, upper_left_y = upper_left_coordinates
-    ds_rate = level_factor ** level
+    upsample_rate = level_factor ** mask_level
 
     mask = np.array(mask)
     mask_2d = mask[..., 0] if len(mask.shape) == 3 else mask
@@ -375,10 +378,10 @@ def mask_to_annotation(mask,
             continue
 
         binary_mask = np.array(mask_2d == label_row.label, dtype=np.uint8)
-        polygons = mask_to_polygon(binary_mask)
+        polygons = mask_to_polygon(binary_mask, min_area)
         if polygons is not None:
             # apply reverse transformation to original coordinates
-            transform_matrix = [ds_rate, 0, 0, ds_rate, upper_left_x, upper_left_y]
+            transform_matrix = [upsample_rate, 0, 0, upsample_rate, upper_left_x, upper_left_y]
             polygons = map(lambda p: affine_transform(p, transform_matrix), polygons)
 
             label_name = label_row.label_name
