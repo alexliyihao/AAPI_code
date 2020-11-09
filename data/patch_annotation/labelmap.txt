@@ -1,0 +1,8 @@
+# label:color_rgb:parts:actions
+background:0,0,0::
+Glomerulus_GS:61,61,245::
+artery:250,50,183::
+cluster:255,106,77::
+distal_tubule:42,125,209::
+glom:250,50,83::
+proximal_tubule:36,179,83::
