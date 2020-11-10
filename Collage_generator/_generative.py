@@ -4,6 +4,7 @@ from tqdm.notebook import tqdm
 from PIL import ImageFilter
 import tables
 import time
+import gc
 
 """
 all the generative fuction of the collage_generator
@@ -38,19 +39,19 @@ class _generative():
         for offset in tqdm([(scanning_size[0]//offset_const*ratio,scanning_size[1]//offset_const*ratio) for ratio in range(offset_const)],
                            desc = "sampling",
                            leave = False):
-          #search the grid
-          for i in range(scan_sample[0]):
-            for j in range(scan_sample[1]):
-              # find the starting point, add some turbulence to the sample
-              x = int(np.random.normal(loc = i, scale = gaussian_variance)*scanning_size[0]) + offset[0]
-              y = int(np.random.normal(loc = j, scale = gaussian_variance)*scanning_size[1]) + offset[1]
-              scanning_area = self.example_img[y : np.min((self.example_img.shape[1],y + scanning_size[1])),
-                                               x : np.min((self.example_img.shape[0],x + scanning_size[0]))]
-              # if the nonzero-area ratio is greater than the thereshold
-              if np.sum(np.any(scanning_area, axis = 2))/(scanning_size[0]*scanning_size[1]) > sample_threshold:
-                # sample it, crop possible additional black pad
-                non_zero_list.append(self._crop_image(scanning_area))
-
+            #search the grid
+            for i in range(scan_sample[0]):
+                for j in range(scan_sample[1]):
+                    # find the starting point, add some turbulence to the sample
+                    x = int(np.random.normal(loc = i, scale = gaussian_variance)*scanning_size[0]) + offset[0]
+                    y = int(np.random.normal(loc = j, scale = gaussian_variance)*scanning_size[1]) + offset[1]
+                    scanning_area = self.example_img[y : np.min((self.example_img.shape[1],y + scanning_size[1])),
+                                                     x : np.min((self.example_img.shape[0],x + scanning_size[0]))]
+                    # if the nonzero-area ratio is greater than the thereshold
+                    if np.sum(np.any(scanning_area, axis = 2))/(scanning_size[0]*scanning_size[1]) > sample_threshold:
+                        # sample it, crop possible additional black pad
+                        non_zero_list.append(self._crop_image(scanning_area))
+        gc.collect()
         canvas = np.zeros((*canvas_size,3))
         # do something similar, add the image to grid
         scan_add = np.ceil(np.true_divide(canvas_size,scanning_size)).astype(int)
@@ -75,9 +76,10 @@ class _generative():
         # give it a filter to eliminate the clear edge
         filtered = Img.fromarray(canvas.astype("uint8")).filter(ImageFilter.MedianFilter(size = filter_size))
         filtered = np.array(filtered.filter(ImageFilter.MedianFilter(size = filter_size)), dtype = "uint8")
+        gc.collect()
         return filtered
 
-    def _build_cluster(self, sub_canvas_size = (500,500)):
+    def _build_cluster(self, sub_canvas_size = (500,500), format = "pixel"):
         """
         create a glomerus-proximal tubules cluster, with its mask
         args:
@@ -112,7 +114,8 @@ class _generative():
                                                                     np.divide(_glom_chosen.shape[:2],2)).astype("int"),
                                              img = _glom_chosen,
                                              mask = _mask,
-                                             mask_label = self.label_dict["glomerulus"])
+                                             mask_label = self.label_dict["glomerulus"],
+                                             format = format)
         # have the proximal tubule around
         for i in range(500):
             self._try_insert(img = self._augment(image = self._random_select(_tubules_list),
@@ -120,7 +123,8 @@ class _generative():
                              canvas = _sub_canvas,
                              mask = _mask,
                              label = self.label_dict["proximal_tubule"],
-                             patience = self.patience)
+                             patience = self.patience,
+                             format = format)
         # remove the round mask
         _mask = np.where(_mask == _circle_mask_label, 0, _mask)
         # remove the potential zero pad
@@ -130,7 +134,8 @@ class _generative():
                  item_num: int = 5,
                  ratio_dict: dict = {"cluster":0.2, "artery": 0.5, 'arteriole': 0.3},
                  background_color = True,
-                 return_dict = True
+                 return_dict = True,
+                 format = "pixel"
                  ):
         """
         the method to generate a new 3-channel collage and a mask
@@ -140,9 +145,13 @@ class _generative():
                       the key must be same to the labels but not necessarily sum to one
           background_color: bool, if True, will add a background color based on self.example_image
           return_dict: bool, if true, will return the dictionary of the generator
+          format: str, "pixel" or "COCO", how the mask will be updates by new vignettes
+                  in "pixel", each individual mask will be saved on the same dimension
+                  if "COCO", each individual mask will be saved on a additional channel
         return:
           _canvas: np.ndarray, self.canvas_size shape, 3 channel, the canvas with images added
-          _mask, np.ndarray, self.canvas_size shape, 1 channel, the mask of the canvas
+          mask: if format is "pixel" np.ndarray of 1 channel, the mask with img's label added.
+                if format is "COCO", np.ndarray of multi-channels, the mask with img's label added.
           label_dict: dict, the dictionary of label name and label value
         """
         # give the correct order, normalize the ratio
@@ -165,20 +174,22 @@ class _generative():
         for _num_count in tqdm(np.arange(_n_cluster),
                                desc = "Appending Clusters...",
                                leave = False):
-            _cluster_canvas, _cluster_mask = self._build_cluster(sub_canvas_size = self.cluster_size)
+            _cluster_canvas, _cluster_mask = self._build_cluster(sub_canvas_size = self.cluster_size, format = format)
             if _num_count == 0:
                 _canvas, _mask = self._init_insert(img = _cluster_canvas,
                                                    canvas = _canvas,
                                                    mask = _mask,
                                                    label = _cluster_mask,
-                                                   mode = "pattern")
+                                                   mode = "pattern",
+                                                   format = format)
             else:
                 _canvas, _mask = self._secondary_insert(img = _cluster_canvas,
                                                         canvas = _canvas,
                                                         mask = _mask,
                                                         label = _cluster_mask,
                                                         patience = self.patience,
-                                                        mode = "pattern")
+                                                        mode = "pattern",
+                                                        format = format)
         # -------------------------------artery, and arteriole------------------------------------
         # the rest ratio will be used for random selection
         _transform = self._generate_augmentation(mode = "other")
@@ -206,7 +217,8 @@ class _generative():
                                  canvas = _canvas,
                                  mask = _mask,
                                  label = _label_value,
-                                 patience = self.patience
+                                 patience = self.patience,
+                                 format = format
                                  )
         # -------------------------------------distal tubules-------------------------------------
         _transform = self._generate_augmentation(mode = "distal_tubules")
@@ -221,15 +233,16 @@ class _generative():
                                               canvas = _canvas,
                                               mask = _mask,
                                               label = self.label_dict["distal_tubule"],
-                                              patience = self.patience)
+                                              patience = self.patience,
+                                              format = format)
 
         # ------------------------------------PostProcessing----------------------------------------
         # cut the additional part of the canvas
-        _cutbound_x = (int(self.max_component_size[0]/2),int(self.max_component_size[0]/2)+self.canvas_size[0])
-        _cutbound_y = (int(self.max_component_size[1]/2),int(self.max_component_size[1]/2)+self.canvas_size[1])
-        _cut_canvas = _canvas[_cutbound_x[0]:_cutbound_x[1],_cutbound_y[0]:_cutbound_y[1]]
-        _cut_mask = _mask[_cutbound_x[0]:_cutbound_x[1],_cutbound_y[0]:_cutbound_y[1]].astype("uint8")
-
+        _cutbound_x = (self.max_component_size[0],self.max_component_size[0]+self.canvas_size[0])
+        _cutbound_y = (self.max_component_size[1],self.max_component_size[1]+self.canvas_size[1])
+        _canvas = _canvas[_cutbound_x[0]:_cutbound_x[1],_cutbound_y[0]:_cutbound_y[1]]
+        _mask = _mask[_cutbound_x[0]:_cutbound_x[1],_cutbound_y[0]:_cutbound_y[1]].astype("uint8")
+        gc.collect()
         # add a gaussian noise
         _cut_canvas = _cut_canvas + (np.random.randn(*(_cut_canvas.shape))*self.gaussian_noise_constant)
 
