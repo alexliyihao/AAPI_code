@@ -109,22 +109,24 @@ class _generative():
         # have the glom added to the center
         _glom_chosen = self._augment(image = self._random_select(_glom_list),
                                      _transform = _transform)
-        _canvas, _mask = self._canvas_append(canvas= _sub_canvas,
-                                             add_point= np.subtract(_center,
-                                                                    np.divide(_glom_chosen.shape[:2],2)).astype("int"),
-                                             img = _glom_chosen,
-                                             mask = _mask,
-                                             mask_label = self.label_dict["glomerulus"],
-                                             format = format)
+        _sub_canvas, _mask = self._canvas_append(canvas= _sub_canvas,
+                                                add_point= np.subtract(_center,
+                                                                        np.divide(_glom_chosen.shape[:2],2)).astype("int"),
+                                                img = _glom_chosen,
+                                                mask = _mask,
+                                                mask_label = self.label_dict["glomerulus"],
+                                                format = format)
         # have the proximal tubule around
-        for i in range(500):
-            self._try_insert(img = self._augment(image = self._random_select(_tubules_list),
-                                                _transform = _transform),
-                             canvas = _sub_canvas,
-                             mask = _mask,
-                             label = self.label_dict["proximal_tubule"],
-                             patience = self.patience,
-                             format = format)
+        for i in tqdm(range(500),
+                      desc = "Generating Clusters...",
+                      leave = False):
+            _sub_canvas, _mask = self._try_insert(img = self._augment(image = self._random_select(_tubules_list),
+                                                      _transform = _transform),
+                                                    canvas = _sub_canvas,
+                                                    mask = _mask,
+                                                    label = self.label_dict["proximal_tubule"],
+                                                    patience = self.patience,
+                                                    format = format)
         # remove the round mask
         _mask = np.where(_mask == _circle_mask_label, 0, _mask)
         # remove the potential zero pad
@@ -154,6 +156,7 @@ class _generative():
                 if format is "COCO", np.ndarray of multi-channels, the mask with img's label added.
           label_dict: dict, the dictionary of label name and label value
         """
+
         # give the correct order, normalize the ratio
         _ratio_list = np.fromiter((ratio_dict[i] for i in ["cluster", "artery", 'arteriole']), dtype = float)
         _ratio_list = _ratio_list / np.sum(_ratio_list)

@@ -73,10 +73,10 @@ class _insertion():
                     # and the rest will following, the first layer will be removed when converted to COCO
                     if mask.ndim == 2:
                         # if the mask only have one layer, it must be the start mask
-                        mask = np.stack((mask, np.zeros_like(mask)))
+                        mask = np.stack((mask, np.zeros_like(mask)), axis = -1)
                     #otherwise add a new layer
                     else:
-                        mask = np.concatenate((mask, np.zeros_like(mask[:,:,0])))
+                        mask = np.concatenate((mask, np.zeros([*mask.shape[:2],1])),axis = 2)
 
                     # add image to canvas, add label to mask by pixel, return both
                     for x in np.arange(img.shape[0]):
@@ -92,11 +92,10 @@ class _insertion():
                     if mask.ndim == 2:
                         # if we only have one layer in mask
                         # it must be the starting mask, add a group of new layer
-                        mask = np.expand_dims(mask, axis=0)
-                        mask = np.concatenate([mask,np.zeros(mask.shape[:2], mask_label.shape[2])])
+                        mask = np.expand_dims(mask, axis=-1)
+                        mask = np.concatenate([mask, np.zeros((*mask.shape[:2], mask_label.shape[2]))],axis = 2)
                     else:
-                        mask = np.concatenate((mask, np.zeros(mask.shape[:2], mask_label.shape[2])))
-
+                        mask = np.concatenate([mask, np.zeros((*mask.shape[:2], mask_label.shape[2]))],axis = 2)
                     for x in np.arange(img.shape[0]):
                         for y in np.arange(img.shape[1]):
                             if np.any(img[x,y]):
