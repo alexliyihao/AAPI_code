@@ -226,7 +226,7 @@ class _generative():
         # -------------------------------------distal tubules-------------------------------------
         _transform = self._generate_augmentation(mode = "distal_tubules")
         _image_list = self.image_list[self.label_dict["distal_tubule"]-1]
-        for _num_count in tqdm(np.arange(3000),
+        for _num_count in tqdm(np.arange(500),
                                desc = "Appending distal_tubules...",
                                leave = False):
 
@@ -247,15 +247,18 @@ class _generative():
         _mask = _mask[_cutbound_x[0]:_cutbound_x[1],_cutbound_y[0]:_cutbound_y[1]].astype("uint8")
         gc.collect()
         # add a gaussian noise
-        _cut_canvas = _cut_canvas + (np.random.randn(*(_cut_canvas.shape))*self.gaussian_noise_constant)
+        _canvas = _canvas + (np.random.randn(*(_canvas.shape))*self.gaussian_noise_constant)
 
         #make sure the output value is legal
-        _cut_canvas = np.clip(_cut_canvas, a_min = 0, a_max = 255).astype("uint8")
+        _canvas = np.clip(_canvas, a_min = 0, a_max = 255).astype("uint8")
 
+        if format == "COCO":
+            _mask = _mask[:,:,[np.any(_mask[:,:,i]) for i in range(_mask.shape[-1])]]
+            
         if return_dict:
-            return _cut_canvas, _cut_mask, self.label_dict
+            return _canvas, _mask, self.label_dict
         else:
-            return _cut_canvas, _cut_mask
+            return _canvas, _mask
 
     def generate_hdf5(self,
                       hdf5_dataset_fname: str = "save.h5",
