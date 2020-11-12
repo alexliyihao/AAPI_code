@@ -75,8 +75,9 @@ def visualize_result(collage, mask, dictionary):
     _axarr[0].set_axis_off()
     _im1 = _axarr[0].imshow(collage)
     _axarr[1].set_axis_off()
-    _values = np.unique(mask.ravel())
-    _im2 = _axarr[1].imshow(mask)
+    _mask = mask if mask.ndim == 2 else mask[:,:,0]
+    _values = np.unique(_mask.ravel())
+    _im2 = _axarr[1].imshow(_mask)
     # get the colors of the values, according to the colormap used by imshow
     _colors = [_im2.cmap(_im2.norm(value)) for value in _values]
     # create a patch (proxy artist) for every color

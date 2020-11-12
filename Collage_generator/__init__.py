@@ -17,7 +17,6 @@ from ._generative import _generative
 from ._insertion import _insertion
 from ._utils import _utils
 from ._generating_dataset import _generating_dataset
-from ._COCO_format import _coco_converter
 
 class collage_generator(_augmentation, _functional, _generative, _insertion, _utils):
 
@@ -160,9 +159,3 @@ class generating_dataset(Dataset, _generating_dataset):
 
         def __getitem__(self, idx):
             return (self._collage_data[idx], self._mask_data[idx])
-
-class coco_converter(_coco_converter):
-    """docstring for coco_converter."""
-
-    def __init__(self, arg):
-        super(coco_converter, self).__init__()
