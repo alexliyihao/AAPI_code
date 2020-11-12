@@ -102,7 +102,7 @@ class _coco_converter():
             color_dict[str(tuple(color))] = label
         return Img.fromarray(image.astype("uint8")), color_dict
 
-    def save_intermediate(self, image, segmentation, image_dir = self.image_path, seg_dir = self.segmentation_path):
+    def save_intermediate(self, image, segmentation, image_dir = None, seg_dir = None):
         """
         save the intermediate format for preparing COCO
         args
@@ -115,6 +115,10 @@ class _coco_converter():
             the segmentation color mask, saved as "mask_{time_generate}.png" in seg_dir
             color dict: saved as "mask_dict_{time_generate}.json" in seg_dir
         """
+        if image_dir == None:
+            image_dir = self.image_path
+        if seg_dir == None:
+            seg_dir = self.segmentation_path
         time_generate = datetime.datetime.now(timezone("EST")).isoformat(' ')
         image = Img.fromarray(image.astype("uint8"))
         image.save(fp = os.path.join(image_dir, f"image_{time_generate}.png"))
@@ -253,12 +257,16 @@ class _coco_converter():
             annotation_id += 1
         return segment_info, annotation_id
 
-    def save_COCO_format(self, image_dir = self.image_path, seg_dir = self.segmentation_path):
+    def save_COCO_format(self, image_dir = None, seg_dir = None):
         """
         the wrapper for generate a final COCO-PANOPTIC format json
         save a generated coco_prepared format image, with it's annotation, as COCO format
         the json file will be saved in the direct parent folder of seg_dir
         """
+        if image_dir == None:
+            image_dir = self.image_path
+        if seg_dir == None;
+            seg_dir = self.segmentation_path
         # this id should be the number of images in the direction
         image_info = []
         annotation_info = []
