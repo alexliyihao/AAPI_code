@@ -164,5 +164,8 @@ class generating_dataset(Dataset, _generating_dataset):
 class coco_converter(_coco_converter):
     """docstring for coco_converter."""
 
-    def __init__(self, arg):
+    def __init__(self, root_path):
         super(coco_converter, self).__init__()
+        self.root_path = root_path
+        self.image_path = os.path.join(self.root_path, "images")
+        self.segmentation_path = os.path.join(self.root_path, "segmentations")
