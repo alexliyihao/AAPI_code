@@ -20,5 +20,5 @@ class coco_converter(_coco_converter):
         self.root_path = root_path
         self.image_path = os.path.join(self.root_path, "images")
         self.segmentation_path = os.path.join(self.root_path, "segmentations")
-        for i in [self.root_path, self.image_path, self.segmentation_path]
+        for i in [self.root_path, self.image_path, self.segmentation_path]:
             os.makedirs(i, exist_ok=True)
