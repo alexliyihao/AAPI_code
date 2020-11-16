@@ -70,7 +70,7 @@ class _utils():
         return:
           img: np.ndarray, image cropped
         """
-        if len(img.shape) == 3:
+        if img.ndim != 2:
             x = np.nonzero(np.any(img, axis = (0,2)))[0]
             y = np.nonzero(np.any(img, axis = (1,2)))[0]
         else:
