@@ -15,10 +15,10 @@ from tqdm import tqdm
 from shapely.geometry import Polygon
 from shapely.affinity import affine_transform
 
-from ml_core.preprocessing.patches_extraction import extract_img_patches, Extractor
-from ml_core.utils.annotations import mask_to_annotation
-from ml_core.modeling.unet import UNet
-from ml_core.utils.slide_utils import read_full_slide_by_level, generate_patches_coords, get_biopsy_contours, \
+from ..preprocessing.patches_extraction import extract_img_patches, Extractor
+from ..utils.annotations import mask_to_annotation
+from .unet import UNet
+from ..utils.slide_utils import read_full_slide_by_level, generate_patches_coords, get_biopsy_contours, \
     get_biopsy_covered_patches_coords
 
 """

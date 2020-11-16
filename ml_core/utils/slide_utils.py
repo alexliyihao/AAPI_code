@@ -101,7 +101,10 @@ def check_patch_include_tissue(patch, otsu_thresh):
     return np.sum(tissue_mask) > 0.15 * reduce(lambda a,b: a*b, tissue_mask.shape)
 
 
-def crop_ROI_from_slide(slide_path, save_dir, size, stride, level):
+def crop_ROI_from_slide(slide_path, save_dir, size, stride, level,
+                        apply_otsu=True,
+                        fname_formatter=lambda offset_x, offset_y, *args: f"ROI_{(offset_x, offset_y)}.png",
+                        overwrite_exist=False):
 
     slide = read_slide(str(slide_path))
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -117,10 +120,14 @@ def crop_ROI_from_slide(slide_path, save_dir, size, stride, level):
     list_of_row_id_col_id = product(range(row_count), range(col_count))
     for row_id, col_id in tqdm(list_of_row_id_col_id, total=row_count*col_count):
         offset_x, offset_y = int(row_id * stride), int(col_id * stride)
-        slide_patch = read_region_from_slide(slide, offset_x, offset_y, level,
-                                             width=size, height=size)
-        if check_patch_include_tissue(slide_patch, otsu_thresh):
-            slide_patch.save(save_dir / f"ROI_{(offset_x, offset_y)}.png")
+        patch_name = fname_formatter(offset_x, offset_y, size)
+
+        if overwrite_exist or not Path(save_dir / patch_name).exists():
+            # generate and write a new patch
+            slide_patch = read_region_from_slide(slide, offset_x, offset_y, level,
+                                                 width=size, height=size)
+            if not apply_otsu or check_patch_include_tissue(slide_patch, otsu_thresh):
+                slide_patch.save(save_dir / patch_name)
 
 
 def generate_patches_coords(width, height, patch_size, stride, pad_size):
