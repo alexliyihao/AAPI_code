@@ -226,7 +226,7 @@ class _generative():
         # -------------------------------------distal tubules-------------------------------------
         _transform = self._generate_augmentation(mode = "distal_tubules")
         _image_list = self.image_list[self.label_dict["distal_tubule"]-1]
-        for _num_count in tqdm(np.arange(500),
+        for _num_count in tqdm(np.arange(3000),
                                desc = "Appending distal_tubules...",
                                leave = False):
 
