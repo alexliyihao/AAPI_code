@@ -1,7 +1,11 @@
 - vignettes: working folder for collage generator
-  - combine vignettes_new_level_0, HE_001_rotated and FFPE PostRep 001
+  - combine vignettes_new_level_0, HE_001_rotated, FFPE PostRep 001 and multistain
   - train/val split 0.8/0.2
-  - exclude some incompleted tubules
+    - glomerulus: 32/9
+    - artery: 18/5
+    - proximal_tubule: 125/32
+    - distal_tubule: 84/22
+  - exclude some incompleted tubules and glom
 - patch_annotation:
   - original patch of slide and tubules masks
   - HE_001 from multistain and 11000_16000_0 from FFPE PostRep 001.svs
