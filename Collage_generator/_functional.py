@@ -126,7 +126,7 @@ class _functional():
           root_path: the root path loading images
         """
         for label in sorted(os.listdir(root_path)):
-            if label == "background" or label == ".ipynb_checkpoint" or label == ".DS_Store":
+            if label == "background" or label == ".ipynb_checkpoints" or label == ".DS_Store":
               continue
             self.add_label(new_label = label)
             for img in os.listdir(os.path.join(root_path, label)):
