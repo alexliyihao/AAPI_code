@@ -69,7 +69,7 @@ class _insertion():
             if format == "COCO":
                 if mode == "label":
                     _new_color, self.existed_color = self._generate_new_color(self.existed_color)
-                    self.color_dict[self.color_dict[str(tuple(_new_color.tolist()))]] = mask_label
+                    self.color_dict[str(tuple(_new_color.tolist()))] = mask_label
                     # we have COCO format use as following, first layer will work as the full mask,
                     # and the rest will following, the first layer will be removed when converted to COCO
                     if mask.ndim == 2:
