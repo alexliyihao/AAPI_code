@@ -79,7 +79,7 @@ class _generative():
         gc.collect()
         return filtered
 
-    def _build_cluster(self, sub_canvas_size = (500,500), format = "pixel"):
+    def _build_cluster(self, sub_canvas_size = (500,500), format = "pixel", existed_color = None):
         """
         create a glomerus-proximal tubules cluster, with its mask
         args:
@@ -115,7 +115,8 @@ class _generative():
                                                 img = _glom_chosen,
                                                 mask = _mask,
                                                 mask_label = self.label_dict["glomerulus"],
-                                                format = format)
+                                                format = format,
+                                                existed_color = existed_color)
         # have the proximal tubule around
         for i in tqdm(range(500),
                       desc = "Generating Clusters...",
@@ -173,11 +174,16 @@ class _generative():
         _mask = np.zeros((_temp_canvas_size[0], _temp_canvas_size[1]))
         # -------------------------------------Component------------------------------------------
         # -------------------------------------Cluster--------------------------------------------
+        if format == "COCO":
+            self.existed_color = []
+            self.color_dict = {}
         _n_cluster = np.ceil(_ratio_list[0]*item_num)
         for _num_count in tqdm(np.arange(_n_cluster),
                                desc = "Appending Clusters...",
                                leave = False):
-            _cluster_canvas, _cluster_mask = self._build_cluster(sub_canvas_size = self.cluster_size, format = format)
+            _cluster_canvas, _cluster_mask, existed_color = self._build_cluster(
+                                                                sub_canvas_size = self.cluster_size,
+                                                                format = format)
             if _num_count == 0:
                 _canvas, _mask = self._init_insert(img = _cluster_canvas,
                                                    canvas = _canvas,
@@ -253,12 +259,17 @@ class _generative():
         _canvas = np.clip(_canvas, a_min = 0, a_max = 255).astype("uint8")
 
         if format == "COCO":
-            _mask = _mask[:,:,[np.any(_mask[:,:,i]) for i in range(_mask.shape[-1])]]
-            
-        if return_dict:
-            return _canvas, _mask, self.label_dict
+            self.existed_color = []
+            if return_dict:
+                return _canvas, _mask[:,:,1:4], self.color_dict, self.label_dict
+            else:
+                return _canvas, _mask[:,:,1:4], self.color_dict
         else:
-            return _canvas, _mask
+            if return_dict:
+                return _canvas, _mask, self.label_dict
+            else:
+                return _canvas, _mask
+
 
     def generate_hdf5(self,
                       hdf5_dataset_fname: str = "save.h5",

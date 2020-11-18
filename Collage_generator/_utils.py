@@ -93,3 +93,20 @@ class _utils():
         _mask = (x*x + y*y > r*r)
         mask[_mask] = circle_mask_label
         return mask
+
+    def _generate_new_color(self, exist_list):
+        """
+        generate random RGB color not in exist_list
+        args:
+            exist_list: list of np.ndarray existed colors
+        return:
+            np.ndarray of shape (n,3), each row as a color is unique
+            Note: this color may have a theoretical maximum
+                  but I don't think the limit will be reached in my scenario
+        """
+        while(True):
+            color = np.random.choice(a = 256, size = (3), replace = True)
+            if color not in exist_list:
+                exist_list.append(color)
+                break
+        return color, exist_list

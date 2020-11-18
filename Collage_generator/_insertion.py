@@ -68,40 +68,32 @@ class _insertion():
                     return canvas, mask
             if format == "COCO":
                 if mode == "label":
-                    # add a new "layer"(This layer is more like photoshop terminology)
+                    _new_color, self.existed_color = self._generate_new_color(self.existed_color)
+                    self.color_dict[str(_new_color)] = mask_label
                     # we have COCO format use as following, first layer will work as the full mask,
                     # and the rest will following, the first layer will be removed when converted to COCO
                     if mask.ndim == 2:
                         # if the mask only have one layer, it must be the start mask
-                        mask = np.stack((mask, np.zeros_like(mask)), axis = -1)
-                    #otherwise add a new layer
-                    else:
-                        mask = np.concatenate((mask, np.zeros([*mask.shape[:2],1])),axis = 2)
-
+                        # add 3 new layers as the RGB recording
+                        mask = np.stack((mask, np.zeros_like(mask),np.zeros_like(mask),np.zeros_like(mask)), axis = -1)
                     # add image to canvas, add label to mask by pixel, return both
                     for x in np.arange(img.shape[0]):
                         for y in np.arange(img.shape[1]):
                             if np.any(img[x,y]):
                                 canvas[add_point[0]+x, add_point[1]+y] = img[x,y]
                                 mask[add_point[0]+x, add_point[1]+y,0] = mask_label
-                                mask[add_point[0]+x, add_point[1]+y,-1] = mask_label
+                                mask[add_point[0]+x, add_point[1]+y,1:4] = _new_color
                     return canvas, mask
                 else:
                     # the new layer is always added at "later" channels
                     # add a group of new "layer"(This layer is more like photoshop terminology)
                     if mask.ndim == 2:
-                        # if we only have one layer in mask
-                        # it must be the starting mask, add a group of new layer
-                        mask = np.expand_dims(mask, axis=-1)
-                        mask = np.concatenate([mask, np.zeros((*mask.shape[:2], mask_label.shape[2]))],axis = 2)
-                    else:
-                        mask = np.concatenate([mask, np.zeros((*mask.shape[:2], mask_label.shape[2]))],axis = 2)
+                        mask = np.stack((mask, np.zeros_like(mask),np.zeros_like(mask),np.zeros_like(mask)), axis = -1)
                     for x in np.arange(img.shape[0]):
                         for y in np.arange(img.shape[1]):
                             if np.any(img[x,y]):
                                 canvas[add_point[0]+x, add_point[1]+y] = img[x,y]
-                                mask[add_point[0]+x, add_point[1]+y, 0] = np.max(mask_label[x,y])
-                                mask[add_point[0]+x, add_point[1]+y, -mask_label.shape[2]:] = mask_label[x,y]
+                                mask[add_point[0]+x, add_point[1]+y] = mask_label[x,y]
                     return canvas, mask
 
     def _init_insert(self,
