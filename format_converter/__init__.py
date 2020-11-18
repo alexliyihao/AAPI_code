@@ -2,17 +2,19 @@ import datetime
 import json
 import os
 import glob
-import PIL.Image as Img
 import numpy as np
 import datetime
 from pytz import timezone
 import json
+from PIL import Image
 from skimage import measure
 from shapely.geometry import Polygon, MultiPolygon
 from ._coco_format import _coco_converter
+from ._detectron_parser import _detectron_parser
+import math
+from detectron2.structures import BoxMode
 
-
-class coco_converter(_coco_converter):
+class format_converter(_coco_converter, _detectron_parser):
     """
     coco_converter saving COCO_PANOPTIC format
     """

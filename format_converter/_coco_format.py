@@ -300,3 +300,37 @@ class _coco_converter():
         with open(f"{seg_dir}.json","w") as open_file:
             json.dump(coco_output, open_file)
         return coco_output
+
+    def save_coco_raw(self, mask, collage, color_dict, root_path, name):
+        """
+
+        save {mask}, {collage} and {color_dict} in {path} with {name}
+        args:
+            collage: H*W*3 np.ndarray object, the actual collage
+            mask: H*W*3 np.ndarray object, the color mask
+            color_dict: {"(R,G,B)": label} dict
+            path: the path under where the info to be saved
+            name: the name template of the files
+        """
+        Image.fromarray(mask).save(os.path.join(root_path, f"mask_{name}.png"))
+        Image.fromarray(collage).save(os.path.join(root_path, f"collage_{name}.png"))
+        with open(os.path.join(root_path, f"color_dict_{name}.json"),"w") as output:
+            json.dump(color_dict, fp=output)
+
+    def read_coco_raw(self,root_path, name):
+        """
+
+        load {mask}, {collage} and {color_dict} with {name} from {path}
+        args:
+            path: the path under where the info to be saved
+            name: the name template of the files
+        returns:
+            collage: H*W*3 np.ndarray object, the actual collage
+            mask: H*W*3 np.ndarray object, the color mask
+            color_dict: {"(R,G,B)": label} dict
+        """
+        collage = np.array(Image.open(os.path.join(root_path, f"collage_{name}.png")))
+        mask = np.array(Image.open(os.path.join(root_path, f"mask_{name}.png")))
+        with open(os.path.join(root_path, f"color_dict_{name}.json", "r")) as readin:
+            color_dict = json.load(readin)
+        return collage, mask, color_dict
