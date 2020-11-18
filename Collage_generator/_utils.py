@@ -106,7 +106,7 @@ class _utils():
         """
         while(True):
             color = np.random.choice(a = 256, size = (3), replace = True)
-            if color not in exist_list:
+            if not any(np.array_equal(color, x) for x in exist_list):
                 exist_list.append(color)
                 break
         return color, exist_list

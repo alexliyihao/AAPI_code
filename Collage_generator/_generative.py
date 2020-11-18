@@ -115,8 +115,8 @@ class _generative():
                                                 img = _glom_chosen,
                                                 mask = _mask,
                                                 mask_label = self.label_dict["glomerulus"],
-                                                format = format,
-                                                existed_color = existed_color)
+                                                format = format)
+
         # have the proximal tubule around
         for i in tqdm(range(500),
                       desc = "Generating Clusters...",
@@ -181,9 +181,9 @@ class _generative():
         for _num_count in tqdm(np.arange(_n_cluster),
                                desc = "Appending Clusters...",
                                leave = False):
-            _cluster_canvas, _cluster_mask, existed_color = self._build_cluster(
-                                                                sub_canvas_size = self.cluster_size,
-                                                                format = format)
+            _cluster_canvas, _cluster_mask = self._build_cluster(
+                                                  sub_canvas_size = self.cluster_size,
+                                                  format = format)
             if _num_count == 0:
                 _canvas, _mask = self._init_insert(img = _cluster_canvas,
                                                    canvas = _canvas,
