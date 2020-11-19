@@ -7,6 +7,7 @@ from skimage import measure
 from shapely.geometry import Polygon, MultiPolygon
 import math
 from detectron2.structures import BoxMode
+from tqdm.notebook import tqdm
 
 class _detectron_parser():
 
@@ -32,7 +33,7 @@ class _detectron_parser():
         with open(os.path.join(saving_path, f"{image_name}_color_dict.json"), "w") as output:
             json.dump(color_dict, fp=output)
 
-    def parse_coco(self, path):
+    def parse_detectron(self, path):
         """
         the final operator parse the images in a path
         """
@@ -127,3 +128,39 @@ class _detectron_parser():
                     sub_masks[pixel_str].putpixel((x+1, y+1), 1)
 
         return sub_masks
+        
+    def save_coco_raw(self, collage, mask, color_dict, root_path, name):
+        """
+
+        save {mask}, {collage} and {color_dict} in {path} with {name}
+        args:
+            collage: H*W*3 np.ndarray object, the actual collage
+            mask: H*W*3 np.ndarray object, the color mask
+            color_dict: {"(R,G,B)": label} dict
+            path: the path under where the info to be saved 
+            name: the name template of the files
+        """
+        os.makedirs(root_path, exist_ok= True)
+        Image.fromarray(mask).save(os.path.join(root_path, f"mask_{name}.png"))
+        Image.fromarray(collage).save(os.path.join(root_path, f"collage_{name}.png"))
+        with open(os.path.join(root_path, f"color_dict_{name}.json"),"w") as output:
+            json.dump(color_dict, fp=output)
+
+    def read_coco_raw(self, root_path, name):
+        """
+        load {mask}, {collage} and {color_dict} with {name} from {path} 
+        args:
+            path: the path under where the info to be saved 
+            name: the name template of the files
+        returns:
+            collage: H*W*3 np.ndarray object, the actual collage
+            mask: H*W*3 np.ndarray object, the color mask
+            color_dict: {"(R,G,B)": label} dict
+        """
+        collage = np.array(Image.open(os.path.join(root_path, f"collage_{name}.png")))
+        mask = np.array(Image.open(os.path.join(root_path, f"mask_{name}.png")))
+        with open(os.path.join(root_path, f"color_dict_{name}.json"), "r") as readin:
+            color_dict = json.load(readin)
+        return collage, mask, color_dict
+
+    
