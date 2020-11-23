@@ -65,6 +65,37 @@ class _detectron_parser():
             formal_output.append(formal_individual_format)
         return formal_output
 
+    def parse_detectron(self, path):
+        """
+        the final operator parse the images in a path
+        """
+        # These ids will be automatically increased as we go
+        image_id = 0
+        mask_path = glob.glob(os.path.join(path, "*mask*.png"))
+        formal_output = []
+        # Create the annotations for each image
+        for i in tqdm(range(len(mask_path)), desc = "parsing", leave = True):
+            with open(mask_path[i].replace("mask", "color_dict").replace("png","json")) as input:
+                color_dict = json.load(input)
+            mask_image = Image.open(mask_path[i])
+            annotations = []
+            sub_masks = self._create_sub_masks(mask_image)
+            for color, sub_mask in sub_masks.items():
+                try:
+                    category_id = color_dict[color]
+                    annotation = self._create_sub_mask_annotation(sub_mask, image_id, category_id)
+                    annotations.append(annotation)
+                except:
+                    pass
+            formal_individual_format = {
+                'annotations': annotations,
+                'file_name': mask_path[i].replace("mask", "collage"),
+                'height': mask_image.size[1],
+                'image_id': image_id,
+                'width': mask_image.size[0]}
+            image_id += 1
+            formal_output.append(formal_individual_format)
+        return formal_output
 
     def _create_sub_mask_annotation(self, sub_mask, image_id, category_id):
         # Find contours (boundary lines) around each sub-mask
@@ -128,7 +159,7 @@ class _detectron_parser():
                     sub_masks[pixel_str].putpixel((x+1, y+1), 1)
 
         return sub_masks
-        
+
     def save_coco_raw(self, collage, mask, color_dict, root_path, name):
         """
 
@@ -137,7 +168,7 @@ class _detectron_parser():
             collage: H*W*3 np.ndarray object, the actual collage
             mask: H*W*3 np.ndarray object, the color mask
             color_dict: {"(R,G,B)": label} dict
-            path: the path under where the info to be saved 
+            path: the path under where the info to be saved
             name: the name template of the files
         """
         os.makedirs(root_path, exist_ok= True)
@@ -148,9 +179,9 @@ class _detectron_parser():
 
     def read_coco_raw(self, root_path, name):
         """
-        load {mask}, {collage} and {color_dict} with {name} from {path} 
+        load {mask}, {collage} and {color_dict} with {name} from {path}
         args:
-            path: the path under where the info to be saved 
+            path: the path under where the info to be saved
             name: the name template of the files
         returns:
             collage: H*W*3 np.ndarray object, the actual collage
@@ -162,5 +193,3 @@ class _detectron_parser():
         with open(os.path.join(root_path, f"color_dict_{name}.json"), "r") as readin:
             color_dict = json.load(readin)
         return collage, mask, color_dict
-
-    
