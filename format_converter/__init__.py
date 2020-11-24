@@ -4,9 +4,9 @@ import os
 import glob
 import numpy as np
 import datetime
-from pytz import timezone
-import json
 import math
+import torch
+from pytz import timezone
 from detectron2.structures import BoxMode
 from tqdm.notebook import tqdm
 from PIL import Image

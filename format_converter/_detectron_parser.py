@@ -8,6 +8,7 @@ from shapely.geometry import Polygon, MultiPolygon
 import math
 from detectron2.structures import BoxMode
 from tqdm.notebook import tqdm
+import torch
 
 class _detectron_parser():
 
@@ -65,7 +66,7 @@ class _detectron_parser():
             formal_output.append(formal_individual_format)
         return formal_output
 
-    def parse_detectron(self, path):
+    def parse_detectron_ROI(self, path):
         """
         the final operator parse the images in a path
         """
@@ -193,3 +194,50 @@ class _detectron_parser():
         with open(os.path.join(root_path, f"color_dict_{name}.json"), "r") as readin:
             color_dict = json.load(readin)
         return collage, mask, color_dict
+
+    def _extract_mask(self, pred_instance, label):
+        """
+        helper function to parse_np_masks,
+        extract mask for a specific label from Detectron pred instance
+        for GPU memory consideration use a loop here.
+        Args:
+            pred_instance: detectron2.structures.instances.Instances object,
+                           can be obtained from predictor(image)["instances"]
+            label: the label you want
+        return:
+            mask: 2d np.ndarray with dtype boolean, the boolean mask of {label}
+        """
+        pixel_mask = torch.zeros(pred_instance.image_size, device="cuda")
+        for i in pred_instance[pred_instance.pred_classes == label].pred_masks:
+            pixel_mask = torch.logical_or(pixel_mask, i)
+        return pixel_mask.cpu().numpy()
+
+    def parse_np_masks(self, pred_instance):
+        """
+        parse a pred_instance into a pixel mask with 1:glom, 2: artery, 3: tubules
+        The label correspondence
+        Args:
+            pred_instance: detectron2.structures.instances.Instances object,
+                           can be obtained from predictor(image)["instances"]
+        Return:
+            mask: 2d np.ndarray with dtype uint8(image), the boolean mask of all labels with
+                  1:glom, 2: artery and arteriole, 3: tubules
+        """
+        mask = np.zeros(pred_instance.image_size)
+        try:
+            mask += self._extract_mask(pred_instance = pred_instance, label = 4).astype("uint8")
+        except:
+            pass
+
+        try:
+            mask += 2* np.logical_or(self._extract_mask(pred_instance = pred_instance, label = 1),
+                                     self._extract_mask(pred_instance = pred_instance, label = 2)).astype("uint8")
+        except:
+            pass
+
+        try:
+            mask += 3* np.logical_or(self._extract_mask(pred_instance = pred_instance, label = 3),
+                                     self._extract_mask(pred_instance = pred_instance, label = 5)).astype("uint8")
+        except:
+            pass
+        return mask
