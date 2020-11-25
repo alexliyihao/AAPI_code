@@ -99,7 +99,7 @@ def generate_heatmap(image, output, extractor: Extractor, output_coords=None, th
                                                 extractor.stride_size,
                                                 extractor.mirror_pad_size)
 
-    assert len(output_coords) == len(output), "Patches count doesn't match with the coordinates count."
+    assert len(output_coords) == len(output), f"{len(output_coords)} != {len(output)}."
 
     heatmap = Image.new("L", (resized_width, resized_height))
 
@@ -158,6 +158,9 @@ def predict_on_ROI(ROIs,
     if verbose:
         ROI_iter = tqdm(ROI_iter, total=len(ROIs))
 
+    resize_factor = (level_base ** input_ROI_level)
+    label_info["min_area"] = label_info["min_size"] // resize_factor
+
     for ROI, upper_left in ROI_iter:
         # infer every ROI
         # coordinate_pattern = re.compile(r".*ROI_(\(\d+,[ ]?\d+\)).*")
@@ -165,19 +168,19 @@ def predict_on_ROI(ROIs,
 
         # upper_left = eval(match.group(1))
         # assert type(upper_left) == tuple, f"Match Failed with {upper_left}."
+        width, height = ROI.size
+        agg_heatmap = np.zeros((height, width, len(label_info) + 1)) # add a layer for background
+        layer_mapping = [0] + label_info["label"].to_list()
 
-        # agg_heatmap = np.zeros((*ROI.size, len(label_info) + 1)) # add a layer for background
-        # layer_mapping = [0] + label_info["label"].to_list()
-
-        annotation = []
-        predicted_mask = []
+        # annotation = []
+        # predicted_mask = []
 
         # predict for every class
         for layer_index, row in enumerate(label_info.itertuples()):
             extractor = Extractor(config_section_name=row.extractor_config_name)
             # resize factor in extractor is based on level 0
             # to accommodate input level, should times the level zoom factor (4 as default)
-            extractor.resize = extractor.resize * level_base ** (input_ROI_level)
+            extractor.resize = extractor.resize * resize_factor
 
             model = row.model
             model.freeze()
@@ -185,22 +188,24 @@ def predict_on_ROI(ROIs,
             dataloader = construct_inference_dataloader_from_ROI(ROI=ROI, extractor=extractor, batch_size=batch_size)
             output = predict_with_model(model, dataloader)
             heatmap = generate_heatmap(ROI, output, extractor, threshold=row.threshold)
-            heatmap = enhance_heatmap(heatmap)
-            mask = np.zeros_like(heatmap)
-            mask[heatmap != 0] = row.label
+            agg_heatmap[..., layer_index + 1] = enhance_heatmap(heatmap)
 
-            min_area = row.min_size // (level_base ** input_ROI_level)
-            annotation.extend(mask_to_annotation(mask, label_info, upper_left, mask_level=0, min_area=min_area))
-            predicted_mask.append(mask)
+            # mask = np.zeros_like(heatmap)
+            # mask[heatmap != 0] = row.label
 
-        # mask = np.argmax(agg_heatmap, axis=2).squeeze()
-        # for layer, label in enumerate(layer_mapping):
-        #     if layer != 0 and label != 0:
-        #         mask[mask == layer] = label
-        # annotation = mask_to_annotation(mask, label_info, upper_left, level=0, min_area=10)
+            # min_area = row.min_size // (level_base ** input_ROI_level)
+            # annotation.extend(mask_to_annotation(mask, label_info, upper_left, mask_level=0, min_area=min_area))
+            # predicted_mask.append(mask)
+
+        mask = np.argmax(agg_heatmap, axis=2).squeeze()
+        for layer, label in enumerate(layer_mapping):
+            if layer != 0 and label != 0:
+                mask[mask == layer] = label
+
+        annotation = mask_to_annotation(mask, label_info, upper_left, mask_level=0)
 
         annotations.append(annotation)
-        predicted_masks.append(predicted_mask)
+        predicted_masks.append(mask)
 
     return predicted_masks, annotations
 

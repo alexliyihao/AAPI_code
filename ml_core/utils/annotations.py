@@ -356,7 +356,8 @@ def mask_to_annotation(mask,
     level_factor : int
         downsampling factor between every two adjacent levels
     min_area : int
-        polygons with area smaller than min_area will be ignored for generating annotations
+        polygons with area smaller than min_area will be ignored for generating annotations;
+        if "min_area" is not provided in label_info, the default value here will be used
 
     Returns
     -------
@@ -378,7 +379,8 @@ def mask_to_annotation(mask,
             continue
 
         binary_mask = np.array(mask_2d == label_row.label, dtype=np.uint8)
-        polygons = mask_to_polygon(binary_mask, min_area)
+        polygons = mask_to_polygon(binary_mask,
+                                   min_area=label_row.min_area if hasattr(label_row, "min_area") else min_area)
         if polygons is not None:
             # apply reverse transformation to original coordinates
             transform_matrix = [upsample_rate, 0, 0, upsample_rate, upper_left_x, upper_left_y]
