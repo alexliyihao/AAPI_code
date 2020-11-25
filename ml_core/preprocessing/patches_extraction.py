@@ -4,7 +4,6 @@ import configparser
 
 import tables
 from PIL import Image
-import cv2
 import numpy as np
 from numpy import ndarray
 from sklearn.feature_extraction.image import extract_patches_2d, extract_patches
@@ -72,14 +71,14 @@ class Extractor:
             self.stride_size = section.getint("stride_size")
             self.normalize_mask = section.getboolean("normalize_mask")
 
-    def extract_patches(self, img, interp_method=Image.BICUBIC) -> ndarray:
+    def extract_patches(self, img: Image, interp_method=Image.BICUBIC) -> ndarray:
         """
         Interface for extracting patches from an image after resizing
 
         Parameters
         ----------
-        img : opencv-format image
-            image to extract patches from, loaded with opencv
+        img : PIL Image
+            image to extract patches from
         interp_method : callable, PIL.Image.BICUBIC by default
             a function specifies the interpolation method for resizing,
             can only be chosen from PIL.Image.Filters.
@@ -91,11 +90,8 @@ class Extractor:
             extracted patches from input image, without any filtering;
             filtering is delegated to the caller function
         """
-        img = cv2.resize(img,
-                         (0, 0),
-                         fx=self.resize,
-                         fy=self.resize,
-                         interpolation=interp_method)  # resize it as specified above
+        resized_shape = tuple(map(lambda x: int(x*self.resize), img.size))
+        img = img.resize(size=resized_shape, resample=interp_method)
 
         # apply mirror padding on front and end of first two axis
         # to make sure the border pixels are all preserved
@@ -127,7 +123,7 @@ def extract_img_patches(img: Union[Path, str, np.ndarray],
 
     Parameters
     ----------
-    img_path : str or Path or numpy array
+    img : str or Path or numpy array or PIL Image
         path to the image file OR
          an image already loaded in memory as numpy array
     extractor : Extractor
@@ -146,11 +142,10 @@ def extract_img_patches(img: Union[Path, str, np.ndarray],
     """
     if isinstance(img, str) or isinstance(img, Path):
         img_path = str(img)
-        # change the order of channels from cv2 format to numpy format
-        img = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2RGB)
+        img = Image.open(img_path)
 
-    if isinstance(img, Image.Image):
-        img = np.array(img)
+    if isinstance(img, np.ndarray):
+        img = Image.fromarray(img)
 
     img_patches = extractor.extract_patches(img)
 
@@ -190,8 +185,8 @@ def extract_mask_patches(mask_path: Union[Path, str],
     # make sure that input mask has three channels
     # and labels for every class is represented as a uint8 label
     mask_path = str(mask_path)
-    mask = cv2.imread(mask_path)  # load as uint8 labels
-    unique_labels = np.unique(np.array(mask))
+    mask = np.array(Image.open(mask_path))  # load as uint8 labels
+    unique_labels = np.unique(mask)
 
     if extractor.normalize_mask:
         # rescale labels
