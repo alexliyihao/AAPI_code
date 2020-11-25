@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import pytorch_lightning as pl
-from pytorch_lightning.metrics.functional import f1_score
+from pytorch_lightning.metrics.functional import f1_score, precision_recall
 from functools import partial
 
 
@@ -113,9 +113,16 @@ class UNet(pl.LightningModule):
                       num_classes=self.n_classes,
                       class_reduction='macro')
 
+        precision, recall = precision_recall(output_labels,
+                                             ground_truths,
+                                             num_classes=self.n_classes,
+                                             class_reduction="macro")
+
         if log:
             self.log(f"{phase}/loss", loss, prog_bar=True)
             self.log(f"{phase}/f1_score", f1, prog_bar=True)
+            self.log(f"{phase}/precision", precision, prog_bar=False)
+            self.log(f"{phase}/recall", recall, prog_bar=False)
 
         return {f"{phase}_loss": loss, f"{phase}_f1_score": f1}
 
