@@ -259,10 +259,10 @@ def annotation_to_mask(annotations,
             2) label_name: str, class name for this class
             3) color: str, 6 digit hex code starts with "#",
                       describing the rendering color for the class
-    upper_left_coordinates : tuple(float, float)
+    upper_left_coordinates : tuple(float, float), (x,y)
         coordinate of upper left point of the mask,
         defined in level-0 coordinate system of original slide
-    mask_shape : tuple
+    mask_shape : tuple, (width, height)
         the exact shape of output mask, can be 2D or 3D;
         (not the original shape in slides, as the output level may not be level-0)
     level : int
