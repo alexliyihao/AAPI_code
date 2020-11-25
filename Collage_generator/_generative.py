@@ -66,8 +66,9 @@ class _generative():
                            int(np.random.normal(loc = i, scale = gaussian_variance)*scanning_size[0])+offset[0])
               try:
                 canvas = self._canvas_append(canvas = canvas,
-                                             img = self._augment(image = self._random_select(non_zero_list),
-                                                                _transform = _transform),
+                                             img = self._augment(
+                                                    image = self._random_select(non_zero_list),
+                                                    transform = _transform),
                                              add_point = add_point)
               except:
                 continue
@@ -84,6 +85,9 @@ class _generative():
         create a glomerus-proximal tubules cluster, with its mask
         args:
             sub_canvas_size: tuple of int, length = 2, the size of sub_canvas used for a cluster
+        return:
+            canvas: H*W*C np.ndarray, the actual image of this cluster
+            mask: H*W*C np.ndarray, the mask of this cluster
         """
         # a augmentation instance for this
         _transform = self._generate_augmentation(mode = "other")
@@ -104,11 +108,11 @@ class _generative():
                                        radius = sub_canvas_size[0]/2,
                                        circle_mask_label = _circle_mask_label)
 
-        _glom_list = self.image_list[self.label_dict["glomerulus"]-1]
-        _tubules_list = self.image_list[self.label_dict["proximal_tubule"]-1]
         # have the glom added to the center
-        _glom_chosen = self._augment(image = self._random_select(_glom_list),
-                                     _transform = _transform)
+        _glom_chosen = self._augment(
+                            image = self._random_select(label = "glomerulus"),
+                            transform = _transform)
+
         _sub_canvas, _mask = self._canvas_append(canvas= _sub_canvas,
                                                 add_point= np.subtract(_center,
                                                                         np.divide(_glom_chosen.shape[:2],2)).astype("int"),
@@ -118,16 +122,17 @@ class _generative():
                                                 format = format)
 
         # have the proximal tubule around
-        for i in tqdm(range(500),
+        for i in tqdm(range(100),
                       desc = "Generating Clusters...",
                       leave = False):
-            _sub_canvas, _mask = self._try_insert(img = self._augment(image = self._random_select(_tubules_list),
-                                                      _transform = _transform),
-                                                    canvas = _sub_canvas,
-                                                    mask = _mask,
-                                                    label = self.label_dict["proximal_tubule"],
-                                                    patience = self.patience,
-                                                    format = format)
+            _sub_canvas, _mask = self._try_insert(img = self._augment(
+                                                      image = self._random_select(label = "proximal_tubule"),
+                                                      transform = _transform),
+                                                  canvas = _sub_canvas,
+                                                  mask = _mask,
+                                                  label = self.label_dict["proximal_tubule"],
+                                                  patience = self.patience,
+                                                  format = format)
         # remove the round mask
         _mask = np.where(_mask == _circle_mask_label, 0, _mask)
         # remove the potential zero pad
@@ -181,64 +186,65 @@ class _generative():
         for _num_count in tqdm(np.arange(_n_cluster),
                                desc = "Appending Clusters...",
                                leave = False):
+
             _cluster_canvas, _cluster_mask = self._build_cluster(
                                                   sub_canvas_size = self.cluster_size,
-                                                  format = format)
+                                                  format = format
+                                                  )
             if _num_count == 0:
-                _canvas, _mask = self._init_insert(img = _cluster_canvas,
-                                                   canvas = _canvas,
-                                                   mask = _mask,
-                                                   label = _cluster_mask,
-                                                   mode = "pattern",
-                                                   format = format)
+                _canvas, _mask = self._init_insert(
+                                    img = _cluster_canvas,
+                                    canvas = _canvas,
+                                    mask = _mask,
+                                    label = _cluster_mask,
+                                    mode = "pattern",
+                                    format = format
+                                    )
             else:
-                _canvas, _mask = self._secondary_insert(img = _cluster_canvas,
-                                                        canvas = _canvas,
-                                                        mask = _mask,
-                                                        label = _cluster_mask,
-                                                        patience = self.patience,
-                                                        mode = "pattern",
-                                                        format = format)
+                _canvas, _mask = self._secondary_insert(
+                                    img = _cluster_canvas,
+                                    canvas = _canvas,
+                                    mask = _mask,
+                                    label = _cluster_mask,
+                                    patience = self.patience,
+                                    mode = "pattern",
+                                    format = format
+                                    )
         # -------------------------------artery, and arteriole------------------------------------
         # the rest ratio will be used for random selection
         _transform = self._generate_augmentation(mode = "other")
         _ratio_list = _ratio_list[1:]
         _ratio_list = _ratio_list / np.sum(_ratio_list)
-        _item_list = ["artery", 'arteriole']
+        _vessel_name_list = ["artery", 'arteriole']
         #for the rest iteration
         for _num_count in tqdm(np.arange(item_num - _n_cluster),
                                desc = "Appending artery and arteriole...",
                                leave = False):
-            # generate a random class from the distribution
-            _class_add = self._multinomial_distribution(_ratio_list)
-            _label_value = self.label_dict[_item_list[_class_add]]
-            # if it's artery or arteriole, find the image_list for this class
-            _image_list = self.image_list[_label_value - 1]
-            # if the class is empty, skip
-            if len(_image_list) == 0:
-              pass
-            # if it's not empty
-            else:
-              # append it to the canvas
-              _canvas, _mask = self._secondary_insert(
-                                 img = self._augment(image = self._random_select(_image_list),
-                                                    _transform = _transform),
-                                 canvas = _canvas,
-                                 mask = _mask,
-                                 label = _label_value,
-                                 patience = self.patience,
-                                 format = format
-                                 )
+            # generate a random class from the distribution， note this label is a string
+            _label = _vessel_name_list[self._multinomial_distribution(_ratio_list)]
+
+            # append it to the canvas
+            _canvas, _mask = self._secondary_insert(
+                             img = self._augment(
+                                    image = self._random_select(label = _label),
+                                    transform = _transform),
+                             canvas = _canvas,
+                             mask = _mask,
+                             label = self.label_dict[_label],
+                             patience = self.patience,
+                             format = format
+                             )
         # -------------------------------------distal tubules-------------------------------------
         _transform = self._generate_augmentation(mode = "distal_tubules")
-        _image_list = self.image_list[self.label_dict["distal_tubule"]-1]
+
         for _num_count in tqdm(np.arange(3000),
                                desc = "Appending distal_tubules...",
                                leave = False):
 
             # append it to the canvas
-            _canvas, _mask = self._try_insert(img = self._augment(image = self._random_select(_image_list),
-                                                                 _transform = _transform),
+            _canvas, _mask = self._try_insert(img = self._augment(
+                                                image = self._random_select(label = "distal_tubule"),
+                                                transform = _transform),
                                               canvas = _canvas,
                                               mask = _mask,
                                               label = self.label_dict["distal_tubule"],
@@ -259,12 +265,20 @@ class _generative():
         _canvas = np.clip(_canvas, a_min = 0, a_max = 255).astype("uint8")
 
         if format == "COCO":
+            self._visualize_result(
+                    collage = _canvas,
+                    mask = _mask[:,:,0],
+                    dictionary = self.label_dict)
             self.existed_color = []
             if return_dict:
-                return _canvas, _mask[:,:,1:4], self.color_dict, self.label_dict
+                return _canvas, _mask[:,:,0], _mask[:,:,1:4], self.color_dict, self.label_dict,
             else:
-                return _canvas, _mask[:,:,1:4], self.color_dict
+                return _canvas, _mask[:,:,0], _mask[:,:,1:4], self.color_dict,
         else:
+            self._visualize_result(
+                    collage = _canvas,
+                    mask = _mask,
+                    dictionary = self.label_dict)
             if return_dict:
                 return _canvas, _mask, self.label_dict
             else:

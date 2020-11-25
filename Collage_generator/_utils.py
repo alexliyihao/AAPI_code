@@ -22,7 +22,7 @@ class _utils():
         assert output_format in ["np", "PIL"]
         # if it's a string
         if type(img) == str:
-            output = np.array(Img.open(img).convert("RGB"))
+            output = cv2.imread(img)
         # if it's a np.ndarray
         elif type(img) == np.ndarray:
             # if it's the correct format
@@ -42,15 +42,35 @@ class _utils():
 
         return output
 
-    def _random_select(self, list_x):
+    def _random_select(self, label):
         """
-        wrapper for randomly selected from a list
+        randomly select a item from a label, this selection is non-replaced
+        once the image in the list is exhausted, the selection will be re-filled
         arg:
-          list_x, a list
+          label: str, a label of some vignette class
         return:
-          a randomly selected element from list_x
+          a randomly selected element from class {label}
         """
-        return list_x[np.random.randint(len(list_x))]
+        # interpret the label into the numerical value
+        _label = self.label_dict[label]-1
+        # find the used label flag in this class
+        if self._image_list_used[_label].shape[0] == 0:
+            # a zeros (1,1,3) will minimize the computational cost
+            return np.zeros((1,1,3))
+            print(f"{_label} list is empty and nothing is selected")
+        # possible index, this logic is somehow tricky...
+        _valid_index = np.flatnonzero(_sub_flag_list == 0)
+        # selection
+        _selection = _valid_index[np.random.randint(_valid_index.shape[0])]
+        # upload  _selection to used list
+        self._image_list_used[_label][_selection] = 1
+        # pick the image selected
+        _selected_images = self.image_list[_label][_selection]
+        # if all the used_list is exhausted, reset the used list
+        if np.all(self._image_list_used[_label]):
+            self._image_list_used[_label] = np.zeros_like(self._image_list_used[_label])
+            print(f"{_label} list are exhausted and reset")
+        return _selected_images
 
     def _multinomial_distribution(self, prob_distribution):
         """
@@ -110,3 +130,30 @@ class _utils():
                 exist_list.append(color)
                 break
         return color, exist_list
+
+    def _visualize_result(self, collage, mask, dictionary):
+        """
+        A visualization of result generated
+
+        Discrete legend part credit to
+        https://stackoverflow.com/questions/40662475/matplot-imshow-add-label-to-each-color-and-put-them-in-legend/40666123#40666123
+
+        input:
+          collage, mask, dictionary, the output of collage generator's .generate() function
+        """
+        _f, _axarr = plt.subplots(1,2)
+        _axarr[0].set_axis_off()
+        _im1 = _axarr[0].imshow(collage)
+        _axarr[1].set_axis_off()
+        _mask = mask if mask.ndim == 2 else mask[:,:,0]
+        _values = np.unique(_mask.ravel())
+        _im2 = _axarr[1].imshow(_mask)
+        # get the colors of the values, according to the colormap used by imshow
+        _colors = [_im2.cmap(_im2.norm(value)) for value in _values]
+        # create a patch (proxy artist) for every color
+        _labels = ["background"] + list([i for i in dictionary if dictionary[i] in values])
+        _patches = [mpatches.Patch(color=_colors[i], label=_labels[i]) for i in range(len(_values))]
+        # put those patched as legend-handles into the legend
+        plt.legend(handles=_patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0 )
+        plt.show()
+        print(dictionary)

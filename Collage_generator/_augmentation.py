@@ -49,7 +49,7 @@ class _augmentation():
                                 border_mode = cv2.BORDER_CONSTANT,
                                 p = 1),
                 A.ShiftScaleRotate(shift_limit=0.0,
-                                  scale_limit=(-0.2,0),
+                                  scale_limit=(-0.4,0.4),
                                   rotate_limit=(0,_rotation),
                                   interpolation= cv2.INTER_NEAREST,
                                   border_mode = cv2.BORDER_CONSTANT,
@@ -57,12 +57,12 @@ class _augmentation():
             ])
         return _transform
 
-    def _augment(self,image,_transform):
+    def _augment(self,image,transform):
         """
         wrapper for transformation
-        _transform: albumentations.core.composition.Compose object
+        transform: albumentations.core.composition.Compose object
         image: np.ndarray, the actual image
 
         return: np.ndarray, the transformed image from _transform
         """
-        return _transform(image = image)["image"]
+        return transform(image = image)["image"]

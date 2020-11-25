@@ -81,7 +81,7 @@ def visualize_result(collage, mask, dictionary):
     # get the colors of the values, according to the colormap used by imshow
     _colors = [_im2.cmap(_im2.norm(value)) for value in _values]
     # create a patch (proxy artist) for every color
-    _labels = ["background"] + list(dictionary.keys())
+    _labels = ["background"] + [i for i in dictionary if dictionary[i] in values]
     _patches = [mpatches.Patch(color=_colors[i], label=_labels[i]) for i in range(len(_values))]
     # put those patched as legend-handles into the legend
     plt.legend(handles=_patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0 )
