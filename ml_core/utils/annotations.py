@@ -282,7 +282,8 @@ def annotation_to_mask(annotations,
 
     upper_left_x, upper_left_y = upper_left_coordinates
     ds_rate = level_factor ** level
-    img_mask = np.zeros(mask_shape, np.uint8)
+    width, height, channels = mask_shape
+    img_mask = np.zeros((height, width, channels), np.uint8)  # in numpy, "height" comes before "width"
 
     for label_row in label_info.itertuples():
         # manipulate every label individually
