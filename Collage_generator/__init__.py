@@ -26,7 +26,7 @@ class collage_generator(_augmentation, _functional, _generative, _insertion, _ut
                  cluster_size: Tuple[int,int] = (1800,1800),
                  example_image: str = "",
                  patience: int = 100,
-                 gaussian_noise_constant: float = 15.0,
+                 gaussian_noise_constant: float = 5.0,
                  scanning_constant: int = 25):
         """
         the initiator

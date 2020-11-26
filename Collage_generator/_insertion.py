@@ -37,34 +37,38 @@ class _insertion():
             mask: if format is "pixel" np.ndarray of 1 channel, the mask with img's label added.
                   if format is "COCO", np.ndarray of multi-channels, the mask with img's label added.
         """
-        assert mode in ["label", "pattern"]
         assert format in ["pixel", "COCO"]
         # if there's no mask
         if type(mask) != np.ndarray:
             # add img to canvas by pixel, only be used in single image preview
-            for x in np.arange(img.shape[0]):
-                for y in np.arange(img.shape[1]):
-                    if np.any(img[x,y]):
-                        canvas[add_point[0]+x, add_point[1]+y] = img[x,y]
+            canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]] += img
             # return canvas
             return canvas
+        if mode == "background":
+            print(1)
+            return np.add(canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                          img,
+                          where = (canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]] == 0),
+                          out = canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                          casting = "unsafe")
         #if there's a mask
         else:
             if format == "pixel":
+                # add image to canvas, add label to mask by pixel, return both
+                np.add(canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                       img,
+                       out = canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                       casting = "unsafe")
                 if mode == "label":
-                    # add image to canvas, add label to mask by pixel, return both
-                    for x in np.arange(img.shape[0]):
-                        for y in np.arange(img.shape[1]):
-                            if np.any(img[x,y]):
-                                canvas[add_point[0]+x, add_point[1]+y] = img[x,y]
-                                mask[add_point[0]+x, add_point[1]+y] = mask_label
-                    return canvas, mask
+                    np.add(mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                            mask_label*np.any(img, axis = 2),
+                            out = mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                            casting = "unsafe")
                 else:
-                    for x in np.arange(img.shape[0]):
-                        for y in np.arange(img.shape[1]):
-                            if np.any(img[x,y]):
-                                canvas[add_point[0]+x, add_point[1]+y] = img[x,y]
-                                mask[add_point[0]+x, add_point[1]+y] = mask_label[x,y]
+                    np.add(mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                           mask_label,
+                           out = mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                           casting = "unsafe")
                     return canvas, mask
             if format == "COCO":
                 if mode == "label":
@@ -77,23 +81,32 @@ class _insertion():
                         # add 3 new layers as the RGB recording
                         mask = np.stack((mask, np.zeros_like(mask),np.zeros_like(mask),np.zeros_like(mask)), axis = -1)
                     # add image to canvas, add label to mask by pixel, return both
-                    for x in np.arange(img.shape[0]):
-                        for y in np.arange(img.shape[1]):
-                            if np.any(img[x,y]):
-                                canvas[add_point[0]+x, add_point[1]+y] = img[x,y]
-                                mask[add_point[0]+x, add_point[1]+y,0] = mask_label
-                                mask[add_point[0]+x, add_point[1]+y,1:4] = _new_color
+                    np.add(canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                            img,
+                            out = canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                            casting="unsafe")
+                    np.add(mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1],0],
+                           mask_label*np.any(img, axis = 2),
+                           out = mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1],0],
+                           casting="unsafe")
+                    np.add(mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1],1:4],
+                           np.any(img, axis = 2, keepdims = True)*_new_color,
+                           mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1],1:4],
+                           casting="unsafe")
                     return canvas, mask
                 else:
                     # the new layer is always added at "later" channels
                     # add a group of new "layer"(This layer is more like photoshop terminology)
                     if mask.ndim == 2:
                         mask = np.stack((mask, np.zeros_like(mask),np.zeros_like(mask),np.zeros_like(mask)), axis = -1)
-                    for x in np.arange(img.shape[0]):
-                        for y in np.arange(img.shape[1]):
-                            if np.any(img[x,y]):
-                                canvas[add_point[0]+x, add_point[1]+y] = img[x,y]
-                                mask[add_point[0]+x, add_point[1]+y] = mask_label[x,y]
+                    np.add(canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                            img,
+                            out = canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                            casting="unsafe")
+                    np.add(mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                            mask_label,
+                            out = mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                            casting="unsafe")
                     return canvas, mask
 
     def _init_insert(self,

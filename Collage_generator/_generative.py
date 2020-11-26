@@ -67,9 +67,10 @@ class _generative():
               try:
                 canvas = self._canvas_append(canvas = canvas,
                                              img = self._augment(
-                                                    image = self._random_select(non_zero_list),
+                                                    image = non_zero_list[np.random.randint(0, len(non_zero_list))],
                                                     transform = _transform),
-                                             add_point = add_point)
+                                             add_point = add_point,
+                                             mode = "background")
               except:
                 continue
         #convert all the black part to white
@@ -170,12 +171,7 @@ class _generative():
         _temp_canvas_size = self.canvas_size + 2*self.max_component_size
         # -------------------------------------Background----------------------------------------
         # generate a larger main canvas and a larger main mask, use them as the background of the final output
-        if background_color == True:
-          _canvas = self._generate_background(canvas_size = _temp_canvas_size)
-        else:
-          _canvas = np.full(shape = (_temp_canvas_size[0], _temp_canvas_size[1],3),
-                            fill_value = 255,
-                            dtype="uint8")
+        _canvas = np.zeros(shape = (_temp_canvas_size[0], _temp_canvas_size[1],3), dtype="uint8")
         _mask = np.zeros((_temp_canvas_size[0], _temp_canvas_size[1]))
         # -------------------------------------Component------------------------------------------
         # -------------------------------------Cluster--------------------------------------------
@@ -257,6 +253,12 @@ class _generative():
         _cutbound_y = (self.max_component_size[1],self.max_component_size[1]+self.canvas_size[1])
         _canvas = _canvas[_cutbound_x[0]:_cutbound_x[1],_cutbound_y[0]:_cutbound_y[1]]
         _mask = _mask[_cutbound_x[0]:_cutbound_x[1],_cutbound_y[0]:_cutbound_y[1]].astype("uint8")
+        gc.collect()
+        if background_color == True:
+          _background = self._generate_background(canvas_size = self.canvas_size)
+          _canvas = np.where(_canvas != 0, _canvas, _background)
+        else:
+          _canvas = np.where(_canvas != 0, _canvas, 255)
         gc.collect()
         # add a gaussian noise
         _canvas = _canvas + (np.random.randn(*(_canvas.shape))*self.gaussian_noise_constant)
