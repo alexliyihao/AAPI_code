@@ -9,14 +9,12 @@ import time
 import os
 import albumentations as A
 import cv2
-from torch.utils.data import Dataset
 
 from ._augmentation import _augmentation
 from ._functional import _functional
 from ._generative import _generative
 from ._insertion import _insertion
 from ._utils import _utils
-from ._generating_dataset import _generating_dataset
 
 class collage_generator(_augmentation, _functional, _generative, _insertion, _utils):
 
