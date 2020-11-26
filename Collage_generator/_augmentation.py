@@ -11,11 +11,11 @@ class _augmentation():
     def _generate_augmentation(self, mode = "distal_tubules"):
         """
         create a augmentation instance from albumentation
-        args:
+        Args:
           mode: str, "distal_tubules" or "other", the mode of augmentation.
                       when under "distal_tubules" mode, the augmentation will
-                      provide a consistent directory augmentation
-        return:
+                      provide a consistent direction augmentation
+        Return:
           _transform: albumentations.core.composition.Compose object, taking all the transformations
         """
         assert mode in ["distal_tubules", "other"]
@@ -28,16 +28,14 @@ class _augmentation():
                                                      p = 0.3),
                                     A.Transpose(p = 0.5),
                                     A.ShiftScaleRotate(shift_limit=0.0,
-                                                       scale_limit=(-0.2,0),
+                                                       scale_limit=(-0.4,0.4),
                                                        rotate_limit=90,
                                                        interpolation= cv2.INTER_NEAREST,
                                                        border_mode = cv2.BORDER_CONSTANT,
                                                        p = 0.5)
                                   ])
         else:
-            _Vflip_flag = np.random.randint(0,2)
-            _Hflip_flag = np.random.randint(0,2)
-            _Transpose_flag = np.random.randint(0,2)
+            _Vflip_flag, _Hflip_flag, _Transpose_flag = np.random.randint(0,2, size = 3)
             _rotation = np.random.randint(0,15)
             _transform = A.Compose([
                 A.VerticalFlip(p = _Vflip_flag),
@@ -60,10 +58,11 @@ class _augmentation():
     def _augment(self,image,transform):
         """
         wrapper for transformation
-        transform: albumentations.core.composition.Compose object
-        image: np.ndarray, the actual image
-
-        return: np.ndarray, the transformed image from _transform
+        Args:
+            image: np.ndarray, the actual image
+            transform: albumentations.core.composition.Compose object
+        Return:
+            np.ndarray, the transformed image from _transform
         """
         # it there's no image in this list (from utils.random_select)
         if isinstance(image, int):
