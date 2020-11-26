@@ -9,14 +9,12 @@ import time
 import os
 import albumentations as A
 import cv2
-from torch.utils.data import Dataset
 
 from ._augmentation import _augmentation
 from ._functional import _functional
 from ._generative import _generative
 from ._insertion import _insertion
 from ._utils import _utils
-from ._generating_dataset import _generating_dataset
 
 class collage_generator(_augmentation, _functional, _generative, _insertion, _utils):
 
@@ -26,7 +24,7 @@ class collage_generator(_augmentation, _functional, _generative, _insertion, _ut
                  cluster_size: Tuple[int,int] = (1800,1800),
                  example_image: str = "",
                  patience: int = 100,
-                 gaussian_noise_constant: float = 15.0,
+                 gaussian_noise_constant: float = 5.0,
                  scanning_constant: int = 25):
         """
         the initiator
@@ -128,34 +126,3 @@ class collage_generator(_augmentation, _functional, _generative, _insertion, _ut
             assert type(scanning_constant) == int
             assert scanning_constant > 0
             self._scanning_constant = scanning_constant
-
-class generating_dataset(Dataset, _generating_dataset):
-    """
-    a supervised dataset specifically designed for this task, deprecated
-    """
-    def __init__(self,
-                 collage_generator,
-                 dataset_size,
-                 vignettes_ratio_list = [0.8,0.07,0.06,0.07],
-                 background_color_ratio = 1.0):
-        """
-        the init of dataset:
-        """
-        super(generating_dataset, self).__init__()
-        self._image_transformation = transforms.ToTensor()
-        # load the collage_generator inside the dataset
-        self._col_gen = collage_generator
-        self._dataset_size = dataset_size
-        self._vignettes_ratio_list = vignettes_ratio_list
-        self._background_color_ratio = background_color_ratio
-        self._collage_data = None
-        self._mask_data = None
-
-        for ctr in tqdm(range(dataset_size), desc = "generating..."):
-            self._add_image()
-
-        def __len__(self):
-            return self._dataset_size
-
-        def __getitem__(self, idx):
-            return (self._collage_data[idx], self._mask_data[idx])

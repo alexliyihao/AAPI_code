@@ -1,7 +1,8 @@
 import PIL.Image as Img
 import numpy as np
-import cv2
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+
 """
 all the utility functions for the collage_generator class
 """
@@ -24,7 +25,7 @@ class _utils():
         assert output_format in ["np", "PIL"]
         # if it's a string
         if type(img) == str:
-            output = cv2.imread(img)
+            output = np.array(Img.open(img).convert("RGB"))
         # if it's a np.ndarray
         elif type(img) == np.ndarray:
             # if it's the correct format
