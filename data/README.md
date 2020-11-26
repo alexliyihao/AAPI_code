@@ -3,17 +3,21 @@
   - train：slide 001,004-006,008,010, all multistain but tubule_HE_001(name as HE_001_...)
   - validation: slide 003, 009, tubule_HE_001
  ```
-  ds          label          
-train       artery              49
+ds          label                
+train       arteriole           23
+            artery              49
             distal_tubule      126
             glomerulus         157
-            glomerulus_gs        6
+            glomerulus_gs*       6
             proximal_tubule    150
-validation  artery              18
+validation  arteriole           25
+            artery              18
             distal_tubule       81
             glomerulus          81
-            glomerulus_gs        4
+            glomerulus_gs*       4
             proximal_tubule     79
+            
+*not included
  ```           
   - test: slide 002 and 007 (not included here)
   - exclude some incompleted tubules and glom
