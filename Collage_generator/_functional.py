@@ -79,6 +79,11 @@ class _functional():
         size = np.array(size)
         self.image_list[self.label_dict[label]-1].append(np_img)
         self.max_component_size = np.max(np.vstack((self.max_component_size, size)), axis = 0)
+        # It's a little bit dumb to have it here but I have no choice
+        # create a "used" flag for each element in image_list
+        # if it's used, the corresponding flag will be 1
+        # the used flag will have a lower priority in the selection
+        self._image_list_used = [np.zeros(len(i)) for i in self.image_list]
         print(f'image succesfully added to label "{label}" with size {size}')
 
     def _resize(self, image_pil, width, height):
