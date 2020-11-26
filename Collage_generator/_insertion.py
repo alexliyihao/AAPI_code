@@ -7,6 +7,7 @@ import time
 import gc
 """
 all the insert/append function for collage generator
+_canvas_append takes the inserting operation, the rest are finding add_point logic
 """
 
 class _insertion():
@@ -20,27 +21,27 @@ class _insertion():
                        format = "pixel"):
         """
         the actual working part, add a image to a canvas
-        args:
+        Args:
             canvas: np.ndarray, 3-channel canvas
             add_point: tuple of int, the topleft point of the image to be added
             img: np.ndarray, 3-channel, the vignette to be added
-            mask: np.ndarray(if it's there), 1-channel, the mask with the canvas
-            mask_label: int or 2d np.ndarray , the value of this label onto the mask
+            mask: np.ndarray(if it's there), 1-channel/4-channels, the mask with the canvas
+            mask_label: int/2d np.ndarray/4 channels np.ndarray, the value of this label onto the mask
             mode: str, "label" or "pattern", how the mask be overwritten,
                 if "label", it will use the int mask_label
-                if "pattern", it will copy the np.ndarray passed to mask_label pixel-by-pixel
+                if "pattern", it will copy the np.ndarray passed to mask_label
             format: str, "pixel" or "COCO", how the mask will be updates by new vignettes
                     in "pixel", each individual mask will be saved on the same dimension
-                    if "COCO", each individual mask will be saved on a additional channel
-        return:
+                    if "COCO", each individual mask will be saved by a different color on a 3-channel mask
+        Return:
             canvas: np.ndarray of 3 channels, the canvas with img added.
             mask: if format is "pixel" np.ndarray of 1 channel, the mask with img's label added.
-                  if format is "COCO", np.ndarray of multi-channels, the mask with img's label added.
+                  if format is "COCO", np.ndarray of 4-channels, the mask with img's label added.
         """
         assert format in ["pixel", "COCO"]
-        # if there's no mask
+        # if there's no mask (preview/background)
         if type(mask) != np.ndarray:
-            # add img to canvas by pixel, only be used in single image preview
+            # add img to canvas, if there's any overlap, skip it
             np.add(canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
                   img,
                   where = (canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]] == 0),
@@ -48,40 +49,47 @@ class _insertion():
                   casting = "unsafe")
             # return canvas
             return canvas
-        #if there's a mask
+
+        #if there's a mask, from the logic of the functions below,
+        #we are going to direcly add these value to a 0-filled canvas and mask
         else:
             if format == "pixel":
-                # add image to canvas, add label to mask by pixel, return both
+                # add image to canvas
                 np.add(canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
                        img,
                        out = canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
                        casting = "unsafe")
+                # add label to mask
                 if mode == "label":
+                    # if in label mode, we are adding this label int value to all nonzero space
                     np.add(mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
-                            mask_label*np.any(img, axis = 2),
-                            out = mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
-                            casting = "unsafe")
+                           mask_label*np.any(img, axis = 2),
+                           out = mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                           casting = "unsafe")
                 else:
+                    #else we are adding a pattern, copy the while pattern
                     np.add(mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
                            mask_label,
                            out = mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
                            casting = "unsafe")
                     return canvas, mask
+            # if we are building a COCO mode
             if format == "COCO":
                 if mode == "label":
+                    # generate a new color for this object
                     _new_color, self.existed_color = self._generate_new_color(self.existed_color)
                     self.color_dict[str(tuple(_new_color.tolist()))] = mask_label
-                    # we have COCO format use as following, first layer will work as the full mask,
+                    # we have COCO format use as following, first layer will work as the pixel mask,
                     # and the rest will following, the first layer will be removed when converted to COCO
                     if mask.ndim == 2:
                         # if the mask only have one layer, it must be the start mask
                         # add 3 new layers as the RGB recording
                         mask = np.stack((mask, np.zeros_like(mask),np.zeros_like(mask),np.zeros_like(mask)), axis = -1)
-                    # add image to canvas, add label to mask by pixel, return both
+                    # add image to canvas, add different label to different channel of the mask
                     np.add(canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
-                            img,
-                            out = canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
-                            casting="unsafe")
+                           img,
+                           out = canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                           casting="unsafe")
                     np.add(mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1],0],
                            mask_label*np.any(img, axis = 2),
                            out = mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1],0],
@@ -92,18 +100,16 @@ class _insertion():
                            casting="unsafe")
                     return canvas, mask
                 else:
-                    # the new layer is always added at "later" channels
-                    # add a group of new "layer"(This layer is more like photoshop terminology)
                     if mask.ndim == 2:
                         mask = np.stack((mask, np.zeros_like(mask),np.zeros_like(mask),np.zeros_like(mask)), axis = -1)
                     np.add(canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
-                            img,
-                            out = canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
-                            casting="unsafe")
+                           img,
+                           out = canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                           casting="unsafe")
                     np.add(mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
-                            mask_label,
-                            out = mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
-                            casting="unsafe")
+                           mask_label,
+                           out = mask[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                           casting="unsafe")
                     return canvas, mask
 
     def _init_insert(self,
@@ -115,22 +121,23 @@ class _insertion():
                      format = "pixel"):
         """
         find a random legal position in canvas, append img to canvas and mask
-        args:
+        Args:
             img: np.ndarray of 3 channels, the vignette to be added
             canvas: np.ndarray of 3 channels, the canvas
-            mask: 2d np.ndarray, the mask
+            mask: 2d/4-channel np.ndarray, the mask
             label: the label to be added
             mode: str, "label" or "pattern", see mode in _canvas_append()
-        return:
+            format: str, see format in _canvas_append()
+        Return:
             canvas: np.ndarray of 3 channels, the canvas with img added.
             mask: np.ndarray of 1 channel, the mask with img's label added.
         """
         _outer_bound = (canvas.shape[0] - img.shape[0], canvas.shape[1] - img.shape[1])
         # select an initial add_point
-        _add_point = np.array((np.random.randint(low = self.scanning_constant,
-                                                 high = _outer_bound[0] - self.scanning_constant),
-                               np.random.randint(low = self.scanning_constant,
-                                                 high = _outer_bound[1] - self.scanning_constant)))
+        _add_point = np.array((np.random.randint(low = self._scanning_constant,
+                                                 high = _outer_bound[0] - self._scanning_constant),
+                               np.random.randint(low = self._scanning_constant,
+                                                 high = _outer_bound[1] - self._scanning_constant)))
         # create a binary mask of the img
         _img_mask = np.any(img, axis = 2)
 
@@ -154,36 +161,41 @@ class _insertion():
                           format = "pixel"):
         """
         find a random non-overlapping position in canvas, append img to canvas and mask
-        args:
+        Args:
             img: np.ndarray of 3 channels, the vignette to be added
             canvas: np.ndarray of 3 channels, the canvas
-            mask: 2d np.ndarray, the mask
+            mask: 2d/4-channel np.ndarray, the mask
             label: the label to be added
-            patience: the retry time for finding non-overlapping position
+            patience: int, the retry time for finding non-overlapping position
             mode: str, "label" or "pattern", see mode in _canvas_append()
-        return:
+            format: str, see format in _canvas_append()
+        Return:
             canvas: np.ndarray of 3 channels, the canvas with img added,
                 if the tries in {patience} times succssfully added the img onto canvas,
                 otherwise the original canvas is returned
-            mask: np.ndarray of 1 channel, the mask with img added,
+            mask: np.ndarray of 2d or 4 channels, the mask with img added,
                 if the tries in {patience} times succssfully added the img onto canvas,
                 otherwise the original mask if returned
         """
         _outer_bound = (canvas.shape[0] - img.shape[0], canvas.shape[1] - img.shape[1])
         # select an initial add_point
-        _add_point = np.array((np.random.randint(low = self.scanning_constant,
-                                         high = _outer_bound[0] - self.scanning_constant),
-                      np.random.randint(low = self.scanning_constant,
-                                        high = _outer_bound[1] - self.scanning_constant)))
+        _add_point = np.array((np.random.randint(
+                                 low = self._scanning_constant,
+                                 high = _outer_bound[0] - self._scanning_constant),
+                               np.random.randint(
+                                 low = self._scanning_constant,
+                                 high = _outer_bound[1] - self._scanning_constant)
+                                ))
 
         # create a binary mask of the img
         _img_mask = np.any(img, axis = 2)
 
         for retry in range(patience):
             # for each time make a small move
-            _add_point = _add_point + np.random.randint(low = -1*self.scanning_constant,
-                                                    high = self.scanning_constant,
-                                                    size = 2)
+            _add_point = _add_point + np.random.randint(
+                                        low = -1*self._scanning_constant,
+                                        high = self._scanning_constant,
+                                        size = 2)
             # make sure the new value is legal
             _add_point = np.clip(a = _add_point,
                             a_min = (0,0),
@@ -228,30 +240,31 @@ class _insertion():
         if the initial point is overlapping, try to "escape" the overlapping
         and append at the first position successfuly escape
 
-        if the initial point is not overlappint, try to find a overlapping point
+        if the initial point is not overlapping, try to find a overlapping point
         and append at the last non-overlapping point before this one
 
-        args:
-        img: np.ndarray of 3 channels, the vignette to be added
-        canvas: np.ndarray of 3 channels, the canvas
-        mask: 2d np.ndarray, the mask
-        label: the label to be added
-        patience: the retry time for finding non-overlapping position
-        mode: str, "label" or "pattern", see mode in _canvas_append()
-        return:
-        canvas: np.ndarray of 3 channels, the canvas with img added,
-            if the tries in {patience} times succssfully added the img onto canvas,
-            otherwise the original canvas is returned
-        mask: np.ndarray of 1 channel, the mask with img added,
-            if the tries in {patience} times succssfully added the img onto canvas,
-            otherwise the original mask if returned
+        Args:
+            img: np.ndarray of 3 channels, the vignette to be added
+            canvas: np.ndarray of 3 channels, the canvas
+            mask: 2d/4-channel np.ndarray, the mask
+            label: the label to be added
+            patience: int, the retry time for finding non-overlapping position
+            mode: str, "label" or "pattern", see mode in _canvas_append()
+            format: str, see format in _canvas_append()
+        Return:
+            canvas: np.ndarray of 3 channels, the canvas with img added,
+                if the tries in {patience} times succssfully added the img onto canvas,
+                otherwise the original canvas is returned
+            mask: np.ndarray of 2d or 4 channels, the mask with img added,
+                if the tries in {patience} times succssfully added the img onto canvas,
+                otherwise the original mask if returned
         """
         _outer_bound = (canvas.shape[0] - img.shape[0], canvas.shape[1] - img.shape[1])
         # select an initial add_point
-        _add_point = np.array((np.random.randint(low = self.scanning_constant,
-                                       high = _outer_bound[0] - self.scanning_constant),
-                    np.random.randint(low = self.scanning_constant,
-                                      high = _outer_bound[1] - self.scanning_constant)))
+        _add_point = np.array((np.random.randint(low = self._scanning_constant,
+                                       high = _outer_bound[0] - self._scanning_constant),
+                    np.random.randint(low = self._scanning_constant,
+                                      high = _outer_bound[1] - self._scanning_constant)))
         # create a binary mask of the img
         _img_mask = np.any(img, axis = 2)
 
@@ -272,8 +285,8 @@ class _insertion():
         # in the patience time
         for retry in range(patience):
             # for each time make a small move
-            _add_point = _add_point + np.random.randint(low = -1*self.scanning_constant,
-                                                  high = self.scanning_constant,
+            _add_point = _add_point + np.random.randint(low = -1*self._scanning_constant,
+                                                  high = self._scanning_constant,
                                                   size = 2)
             # make sure the new value is legal
             _add_point = np.clip(a = _add_point,

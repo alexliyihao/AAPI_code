@@ -10,9 +10,9 @@ def extract_image(filename: str):
     for colab using, the input is designed for situation where default path have
     both "SegmentationObject" and "JPEGImages" folders
     input:
-      filename: str, the name under folder "SegmentationObject"(.png name)
+        filename: str, the name under folder "SegmentationObject"(.png name)
     return:
-      np.ndarray, the image extracted by the mask
+        np.ndarray, the image extracted by the mask
     """
     assert filename[-3:] == "png"
     _pngname = filename
@@ -37,30 +37,6 @@ def crop_image(img):
     _ys,_yf = _y[0],_y[-1]
     return img[_ys:_yf,_xs:_xf]
 
-def import_git_images():
-    """
-    directly read all the images, assume that the github repo is in your current working directory
-
-    return:
-    image_list: 2D list of RGB np.ndarray, each label will have a individual list
-    class_name_list: 1D list of string, number of label
-    """
-    _import_path = os.path.join(os.getcwd(), "vignettes")
-    _label_list = []
-    _image_list = []
-    for i in os.listdir(_import_path):
-      if i == "notes.docx":
-        continue
-      else:
-        _label_list.append(i)
-        _image_list.append([])
-      for j in os.listdir(os.path.join(_import_path, i)):
-        try:
-          _image_list[-1].append(np.array(Img.open(os.path.join(_import_path, i, j)).convert("RGB"), dtype="uint8"))
-        except:
-          continue
-    return _image_list, _label_list
-
 def visualize_result(collage, mask, dictionary):
     """
     A visualization of result generated
@@ -69,7 +45,7 @@ def visualize_result(collage, mask, dictionary):
     https://stackoverflow.com/questions/40662475/matplot-imshow-add-label-to-each-color-and-put-them-in-legend/40666123#40666123
 
     input:
-      collage, mask, dictionary, the output of collage generator's .generate() function
+      collage, mask, dictionary, the output of collage generator's .generate() function, mask is the pixel mask
     """
     _f, _axarr = plt.subplots(1,2)
     _axarr[0].set_axis_off()
