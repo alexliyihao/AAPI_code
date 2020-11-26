@@ -1,5 +1,7 @@
 import PIL.Image as Img
 import numpy as np
+import cv2
+import matplotlib.pyplot as plt
 """
 all the utility functions for the collage_generator class
 """
@@ -55,11 +57,9 @@ class _utils():
         _label = self.label_dict[label]-1
         # find the used label flag in this class
         if self._image_list_used[_label].shape[0] == 0:
-            # a zeros (1,1,3) will minimize the computational cost
-            return np.zeros((1,1,3))
-            print(f"{_label} list is empty and nothing is selected")
+            return 0 # the 0 is processed by the augmentation.augment
         # possible index, this logic is somehow tricky...
-        _valid_index = np.flatnonzero(_sub_flag_list == 0)
+        _valid_index = np.flatnonzero(self._image_list_used[_label] == 0)
         # selection
         _selection = _valid_index[np.random.randint(_valid_index.shape[0])]
         # upload  _selection to used list
@@ -69,7 +69,6 @@ class _utils():
         # if all the used_list is exhausted, reset the used list
         if np.all(self._image_list_used[_label]):
             self._image_list_used[_label] = np.zeros_like(self._image_list_used[_label])
-            print(f"{_label} list are exhausted and reset")
         return _selected_images
 
     def _multinomial_distribution(self, prob_distribution):
@@ -151,9 +150,9 @@ class _utils():
         # get the colors of the values, according to the colormap used by imshow
         _colors = [_im2.cmap(_im2.norm(value)) for value in _values]
         # create a patch (proxy artist) for every color
-        _labels = ["background"] + list([i for i in dictionary if dictionary[i] in values])
+        _labels = ["background"] + list([i for i in dictionary if dictionary[i] in _values])
         _patches = [mpatches.Patch(color=_colors[i], label=_labels[i]) for i in range(len(_values))]
         # put those patched as legend-handles into the legend
-        plt.legend(handles=_patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0 )
+        plt.legend(handles=_patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
         plt.show()
         print(dictionary)

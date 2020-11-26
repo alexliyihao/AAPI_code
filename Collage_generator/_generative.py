@@ -122,7 +122,7 @@ class _generative():
                                                 format = format)
 
         # have the proximal tubule around
-        for i in tqdm(range(100),
+        for i in tqdm(range(200),
                       desc = "Generating Clusters...",
                       leave = False):
             _sub_canvas, _mask = self._try_insert(img = self._augment(

@@ -65,4 +65,8 @@ class _augmentation():
 
         return: np.ndarray, the transformed image from _transform
         """
+        # it there's no image in this list (from utils.random_select)
+        if isinstance(image, int):
+            # return a smallest "valid format" zero image.
+            return np.zeros((1,1,3))
         return transform(image = image)["image"]
