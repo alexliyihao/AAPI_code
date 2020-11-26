@@ -41,16 +41,13 @@ class _insertion():
         # if there's no mask
         if type(mask) != np.ndarray:
             # add img to canvas by pixel, only be used in single image preview
-            canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]] += img
+            np.add(canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                  img,
+                  where = (canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]] == 0),
+                  out = canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
+                  casting = "unsafe")
             # return canvas
             return canvas
-        if mode == "background":
-            print(1)
-            return np.add(canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
-                          img,
-                          where = (canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]] == 0),
-                          out = canvas[add_point[0]:add_point[0]+img.shape[0], add_point[1]:add_point[1]+img.shape[1]],
-                          casting = "unsafe")
         #if there's a mask
         else:
             if format == "pixel":
