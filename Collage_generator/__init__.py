@@ -25,7 +25,9 @@ class collage_generator(_augmentation, _functional, _generative, _insertion, _ut
                  example_image: str = "",
                  patience: int = 100,
                  gaussian_noise_constant: float = 5.0,
-                 scanning_constant: int = 25):
+                 scanning_constant: int = 25,
+                 num_proximal_per_cluster: int = 300,
+                 num_distal_per_image: int = 3000):
         """
         the initiator of collage_generator
         Args:
@@ -56,7 +58,9 @@ class collage_generator(_augmentation, _functional, _generative, _insertion, _ut
         self._scanning_constant = scanning_constant
         self._max_component_size = np.array([0,0])
         self._cluster_size = cluster_size
-
+        self._num_proximal_per_cluster = num_proximal_per_cluster
+        self._num_distal_per_image = num_distal_per_image
+        
         @property
         def canvas_size(self):
             """
@@ -138,6 +142,22 @@ class collage_generator(_augmentation, _functional, _generative, _insertion, _ut
             assert scanning_constant > 0
             self._scanning_constant = scanning_constant
 
+        @property
+        def num_proximal_per_cluster(self):
+            """
+            makes the canvas_size can be access from .scanning_constant
+            """
+            return self._num_proximal_per_cluster
+
+        @num_proximal_per_cluster.setter
+        def num_proximal_per_cluster(self, scanning_constant: int):
+            """
+            enforce the update of patience some legal value, the update procedure is
+            still from collage_generator.scanning_constant = n
+            """
+            assert type(scanning_constant) == int
+            assert scanning_constant > 0
+            self._num_proximal_per_cluster = num_proximal_per_cluster
         @property
         def cluster_size(self):
             """
