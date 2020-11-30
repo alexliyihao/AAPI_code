@@ -1,9 +1,6 @@
 from openslide import open_slide
 from pathlib import Path
 import pandas as pd
-from skimage import measure, color
-from matplotlib import pyplot as plt
-import matplotlib.patches as mpatches
 import numpy as np
 from itertools import product
 from functools import reduce
@@ -14,7 +11,8 @@ from tqdm import tqdm
 from shapely.geometry import Polygon, box
 
 
-from .annotations import create_covering_rectangles, annotation_to_mask, mask_to_polygon
+from .annotations import create_covering_rectangles_using_clusters, create_covering_rectangles_greedy
+from .annotations import annotation_to_mask, mask_to_polygon, generate_colorful_mask
 
 
 LEVEL_BASE = 4
@@ -173,41 +171,51 @@ def crop_ROI_using_annotations(slide_path,
                                save_dir,
                                annotations,
                                class_name,
-                               section_size,
-                               verbose):
+                               section_size):
+
     filtered_annotations = list(filter(lambda a: a.group_name == class_name, annotations))
     if len(filtered_annotations) == 0:
         print(f"Cannot find any annotations with class {class_name}")
         return None
 
-    upper_left_coords = create_covering_rectangles(filtered_annotations, verbose=verbose, size=section_size)
+    try:
+        upper_left_coords = create_covering_rectangles_using_clusters(filtered_annotations, size=section_size)
+    except RuntimeError as e:
+        print(f"[Warning] {e}; use a greedy algorithm to cover all polygons instead")
+        upper_left_coords = create_covering_rectangles_greedy(filtered_annotations, size=section_size)
 
     # currently supports binary mask only
     label_info = pd.DataFrame({"label_name": [class_name],
                                "label": [1],
-                               "color": "#ff0000"})
+                               "color": "#ffffff"})
 
     slide = read_slide(str(slide_path))
+    slide_name = Path(slide_path).with_suffix("").name
 
     class_root = save_dir / class_name
-    class_root.mkdir(exist_ok=True)
+    class_root.mkdir(exist_ok=True, parents=True)
 
     for i, upper_left in enumerate(upper_left_coords):
-        mask = annotation_to_mask(filtered_annotations,
-                                  label_info=label_info,
-                                  upper_left_coordinates=upper_left,
-                                  mask_shape=(section_size, section_size),
-                                  level=0)
-        assert mask.max() > 0
-        #         assert np.all(mask[..., 0] == mask[..., 1]) and np.all(mask[..., 0] == mask[..., 2])
+        ROI_path = class_root / f"{slide_name}_ROI_{i:03d}_{upper_left}.png"
+        mask_path = class_root / f"{ROI_path.with_suffix('').name}_mask.png"
 
-        img = read_region_from_slide(slide,
-                                     x=upper_left[0],
-                                     y=upper_left[1],
-                                     level=0,
-                                     width=section_size,
-                                     height=section_size,
-                                     relative_coordinate=True)
+        if not mask_path.exists():
+            mask = annotation_to_mask(filtered_annotations,
+                                      label_info=label_info,
+                                      upper_left_coordinates=upper_left,
+                                      mask_shape=(section_size, section_size),
+                                      level=0)
+            assert mask.max() > 0
+            mask = generate_colorful_mask(mask, label_info)
+            Image.fromarray(mask).save(mask_path)
 
-        Image.fromarray(mask).save(class_root / f"HE_{i:03d}_mask_{upper_left}.png")
-        img.save(class_root / f"HE_{i:03d}_{upper_left}.png")
+        if not ROI_path.exists():
+            img = read_region_from_slide(slide,
+                                         x=upper_left[0],
+                                         y=upper_left[1],
+                                         level=0,
+                                         width=section_size,
+                                         height=section_size,
+                                         relative_coordinate=True)
+
+            img.save(ROI_path)

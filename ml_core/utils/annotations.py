@@ -451,7 +451,29 @@ def merge_annotations(annotations_group: List[List[ASAPAnnotation]]):
     return merged_annotations
 
 
-def create_covering_rectangles(annotations, size, verbose):
+def create_covering_rectangles_greedy(annotations, size):
+    polygons = [a.geometry for a in annotations]
+    centroids = np.array([tuple(p.centroid.coords)[0] for p in polygons])
+    is_covered = [False] * len(polygons)
+
+    upper_left_coords = []
+    for pid, polygon in enumerate(polygons):
+        if not is_covered[pid]:
+            is_covered[pid] = True
+            center = centroids[pid]
+            upper_left = int(center[0] - size / 2), int(center[1] - size / 2)
+            lower_right = int(center[0] + size / 2), int(center[1] + size / 2)
+            upper_left_coords.append(upper_left)
+            bbox = box(*upper_left, *lower_right)
+
+            for candidate_pid, candidate_polygon in enumerate(polygons):
+                if not is_covered[candidate_pid] and bbox.contains(candidate_polygon):
+                    is_covered[candidate_pid] = True
+
+    return upper_left_coords
+
+
+def create_covering_rectangles_using_clusters(annotations, size):
     polygons = [a.geometry for a in annotations]
     centroids = np.array([tuple(p.centroid.coords)[0] for p in polygons])
 
@@ -472,9 +494,6 @@ def create_covering_rectangles(annotations, size, verbose):
             cluster_inv[cid] = [polygons[i]]
             cluster_inv_verbose[cid] = [annotations[i].annotation_name]
 
-    if verbose:
-        print(cluster_inv_verbose)
-
     upper_left_coords = []
 
     for cid, polys in cluster_inv.items():
@@ -490,7 +509,8 @@ def create_covering_rectangles(annotations, size, verbose):
 
         bbox = box(*upper_left, *lower_right)
 
-        assert np.all([p.within(bbox) for p in polys]), f"Cannot cover all polygons for cid {cid}."
+        if len(polys) > 1 and not np.all([bbox.contains(p) for p in polys]):
+            raise RuntimeError(f"Not all polygons are fully covered in cluster {cid}.")
 
         upper_left_coords.append(upper_left)
 
