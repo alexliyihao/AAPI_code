@@ -185,8 +185,8 @@ def extract_mask_patches(mask_path: Union[Path, str],
     # make sure that input mask has three channels
     # and labels for every class is represented as a uint8 label
     mask_path = str(mask_path)
-    mask = np.array(Image.open(mask_path))  # load as uint8 labels
-    unique_labels = np.unique(mask)
+    mask = np.array(Image.open(mask_path), dtype=np.uint8)  # load as uint8 labels
+    unique_labels = np.sort(np.unique(mask))
 
     if extractor.normalize_mask:
         # rescale labels
@@ -199,7 +199,7 @@ def extract_mask_patches(mask_path: Union[Path, str],
 
         # reshape mask to 3D
         if len(mask.shape) == 2:
-            mask = np.repeat(mask[:, np.newaxis], 3, axis=2)
+            mask = np.repeat(mask[..., np.newaxis], 3, axis=2)
 
     assert mask.dtype == np.uint8, \
         f"Only supports uint8 labels, but the current dtype for mask {mask_path} is {mask.dtype}"
@@ -213,7 +213,7 @@ def extract_mask_patches(mask_path: Union[Path, str],
     # want to use nearest;
     # otherwise resizing may cause non-existing classes
     # to be produced via interpolation (e.g., ".25")
-    mask_patches = extractor.extract_patches(mask, interp_method=Image.NEAREST)
+    mask_patches = extractor.extract_patches(Image.fromarray(mask), interp_method=Image.NEAREST)
 
     # keep all positive patches and sample negative patches;
     # TODO: determine a more intuitive sampling strategy;
