@@ -53,6 +53,12 @@ class UNet(pl.LightningModule):
         self.padding = padding
         self.depth = depth
         self.n_classes = n_classes
+        if n_classes == 2:
+            self.class_reduction = "none"
+        else:
+            # micro combat the class imbalance problem better
+            self.class_reduction = "micro"
+
         prev_channels = in_channels
         self.down_path = nn.ModuleList()
         for i in range(depth):
@@ -111,12 +117,18 @@ class UNet(pl.LightningModule):
         f1 = f1_score(output_labels,
                       ground_truths,
                       num_classes=self.n_classes,
-                      class_reduction='macro')
+                      class_reduction=self.class_reduction)
 
         precision, recall = precision_recall(output_labels,
                                              ground_truths,
                                              num_classes=self.n_classes,
-                                             class_reduction="macro")
+                                             class_reduction=self.class_reduction)
+
+        if self.n_classes == 2:
+            # use the positive class only for binary case
+            f1 = f1[-1]
+            precision = precision[-1]
+            recall = recall[-1]
 
         if log:
             self.log(f"{phase}/loss", loss, prog_bar=True)
