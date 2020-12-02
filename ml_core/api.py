@@ -1,7 +1,7 @@
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from .modeling.postprocessing import load_label_info_from_config, predict_on_ROI, predict_on_WSI
+from .modeling.postprocessing import load_label_info_from_config, predict_on_batch_ROIs, predict_on_WSI
 from .utils.annotations import merge_annotations, create_asap_annotation_file
 
 
@@ -53,7 +53,7 @@ def segment_ROI(ROIs,
     """
     if label_info is None:
         label_info = default_label_info
-    predicted_masks, annotations = predict_on_ROI(ROIs, upper_left_coords, label_info, batch_size)
+    predicted_masks, annotations = predict_on_batch_ROIs(ROIs, upper_left_coords, label_info, batch_size)
     xml_annotation = _aggregate_and_format_annotations(annotations)
 
     return xml_annotation if not return_masks else (xml_annotation, predicted_masks)

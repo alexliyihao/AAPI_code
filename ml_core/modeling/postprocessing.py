@@ -31,7 +31,12 @@ def enhance_heatmap(heatmap):
     kernel = np.ones((7, 7), np.uint8)
 
     # remove noise (small bright regions) in background
-    enhanced_heatmap = cv2.morphologyEx(np.array(heatmap), cv2.MORPH_OPEN, kernel, iterations=3)
+    binary_heatmap = np.where(np.array(heatmap) >= 127, 255, 0)
+    binary_heatmap = np.array(binary_heatmap, dtype=np.uint8)
+    enhanced_heatmap = cv2.morphologyEx(binary_heatmap,
+                                        cv2.MORPH_OPEN,
+                                        kernel,
+                                        iterations=3)
 
     return enhanced_heatmap
 
@@ -88,8 +93,8 @@ def predict_with_model(model: LightningModule, dataloader):
     return model_output
 
 
-def generate_heatmap(image, output, extractor: Extractor, output_coords=None, threshold=0.5):
-    width, height = image.size
+def generate_heatmap(size, output, extractor: Extractor, output_coords=None, threshold=0.5):
+    width, height = size
     resized_width, resized_height = int(width * extractor.resize), int(height * extractor.resize)
 
     if output_coords is None:
@@ -144,13 +149,30 @@ def load_label_info_from_config(config_file):
     return label_info
 
 
-def predict_on_ROI(ROIs,
-                   upper_left_coords,
-                   label_info,
-                   batch_size=64,
-                   verbose=False,
-                   input_ROI_level=0,
-                   level_base=4):
+def predict_on_single_ROI(model,
+                          data,
+                          heatmap_size,
+                          extractor,
+                          threshold,
+                          output_coords=None):
+
+    outputs = predict_with_model(model, data)
+    heatmap: Image = generate_heatmap(heatmap_size, outputs, extractor,
+                               output_coords=output_coords,
+                               threshold=threshold)
+    heatmap: np.ndarray = np.array(heatmap)
+    binary_enhanced_heatmap = enhance_heatmap(heatmap)
+    heatmap[np.where(binary_enhanced_heatmap == 0)] &= 0
+    return heatmap
+
+
+def predict_on_batch_ROIs(ROIs,
+                          upper_left_coords,
+                          label_info,
+                          batch_size=64,
+                          verbose=False,
+                          input_ROI_level=0,
+                          level_base=4):
     annotations = []
     predicted_masks = []
 
@@ -185,10 +207,18 @@ def predict_on_ROI(ROIs,
             model = row.model
             model.freeze()
 
-            dataloader = construct_inference_dataloader_from_ROI(ROI=ROI, extractor=extractor, batch_size=batch_size)
-            output = predict_with_model(model, dataloader)
-            heatmap = generate_heatmap(ROI, output, extractor, threshold=row.threshold)
-            agg_heatmap[..., layer_index + 1] = enhance_heatmap(heatmap)
+            data = construct_inference_dataloader_from_ROI(ROI=ROI,
+                                                                 extractor=extractor,
+                                                                 batch_size=batch_size)
+
+            heatmap = predict_on_single_ROI(model,
+                                            data,
+                                            heatmap_size=ROI.size,
+                                            extractor=extractor,
+                                            threshold=row.threshold,
+                                            output_coords=None)
+
+            agg_heatmap[..., layer_index + 1] = heatmap
 
             # mask = np.zeros_like(heatmap)
             # mask[heatmap != 0] = row.label
@@ -262,14 +292,15 @@ def predict_on_WSI(slide_path,
                                          coord[1] + extractor.patch_size))
                        for coord in covered_coords]
 
-            dataloader = construct_inference_dataloader_from_patches(patches, batch_size)
+            data = construct_inference_dataloader_from_patches(patches, batch_size)
 
             model: LightningModule = row.model
             model.freeze()
-            output = predict_with_model(model, dataloader)
 
-            heatmap = generate_heatmap(ROI, output, extractor, output_coords=covered_coords, threshold=row.threshold)
-            heatmap = enhance_heatmap(heatmap)
+            heatmap = predict_on_single_ROI(model, data, ROI.size, extractor,
+                                            threshold=row.threshold,
+                                            output_coords=covered_coords)
+
             mask = np.zeros_like(heatmap)
             mask[heatmap != 0] = row.label
 
@@ -283,6 +314,6 @@ def predict_on_WSI(slide_path,
                                                              level_factor=level_base))
             predicted_masks[biopsy_id].append(mask)
 
-            del patches, resized_ROI, dataloader
+            del patches, resized_ROI, data
 
     return predicted_masks, annotations

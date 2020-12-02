@@ -102,7 +102,7 @@ def parse_arguments():
     # positional arguments
     parser.add_argument("data_root",
                         help="root directory containing data; relative to the script")
-    parser.add_argument("output_dir",
+    parser.add_argument("log_dir",
                         help="root directory saving logs and model checkpoints;"
                              "relative to the script;"
                              "dataset_name and class_name will be appended to it.")
@@ -166,7 +166,7 @@ def parse_arguments():
                             else ("MultiStain" if use_multistain else "Collage")
 
     args.data_root = (Path.cwd() / Path(args.data_root)).resolve()
-    args.log_dir = (Path.cwd() / Path(args.output_dir) / Path(f"{args.dataset_name}/{args.class_name}/")).resolve()
+    args.log_dir = (Path.cwd() / Path(args.log_dir) / Path(f"{args.dataset_name}/{args.class_name}/")).resolve()
 
     return args
 
