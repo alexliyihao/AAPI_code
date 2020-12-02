@@ -271,5 +271,5 @@ class _detectron_parser():
         for i, _img_data in enumerate(data):
             _annotations = _img_data['annotations']
             for j in range(len(_annotations)):
-            data[i]['annotations'][j]['bbox_mode'] = bbox_mode
+                data[i]['annotations'][j]['bbox_mode'] = bbox_mode
         return data
