@@ -1,0 +1,144 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage[a4paper, portrait, margin=1.2in]{geometry}
+
+\usepackage{xcolor}
+\usepackage{booktabs} 
+\usepackage{subfigure}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage[normalem]{ulem}
+\usepackage{enumitem}
+\usepackage{footmisc}
+\usepackage{multirow}
+\usepackage{algpseudocode} 
+\usepackage[ruled,linesnumbered]{algorithm2e}
+\usepackage[nomargin,inline,marginclue,draft]{fixme}
+\usepackage{balance}
+\usepackage{changepage}
+\definecolor{light-gray}{gray}{0.95}
+\newcommand{\code}[1]{\colorbox{light-gray}{\texttt{#1}}}
+\usepackage{floatrow}
+\usepackage{minted}
+% Table float box with bottom caption, box width adjusted to content
+\newfloatcommand{capbtabbox}{table}[][\FBwidth]
+
+\usepackage[utf8]{inputenc}
+
+\title{collage generator}
+\date{December 2020}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+\subsection{Breif Description}
+This report demonstrates the process of collage generator.
+\subsection{Parameters Table}
+We list important parameters for generating a collage and further illustration will be provided in following sections.
+\begin{table}[!ht]
+	\centering
+	\begin{tabular}{|c|c|c|}
+		\hline
+		Parameter Name & Default  &  Description  \\ \hline
+		canvas\_size  & [3000, 3000]  &  The collage size \\ \hline
+		cluster\_size &  [2200, 2200] & The glomerulus-proximal tubules cluster size \\ \hline
+		example\_image &  / &  The example image for background \\ \hline
+		gaussian\_noise\_constant &  5 &  $\sigma$ for the gaussian distribution   \\ \hline
+		patience & 100 & the retry time for each insert if overlap\\ \hline 
+		item\_num& 5 &  total number of glomerulus + artery + arterioles  \\ \hline
+		ratio\_dict&  \{``cluster":0.2, & The ratio of each case \\ &``artery": 0.5,& Denote the 3 parameters as:\\ &``arteriole": 0.3\}& \{``cluster": $p_1$, ``artery":  $p_2$,``arteriole": $p_3$\} \\ \hline
+	\end{tabular}
+	\caption{Important Parameters}
+	\label{tbl: params}
+\end{table}
+
+\section{Generative Process}
+We summarize the generative process in this section, and then demostrate related sub-steps in section 3. \\
+Before generation, we need to \textbf{load all the images of components}. Meanwhile, we record the maximum size of those components on both x and y axis, denoted as max\_component\_size ($\in R^{1\times2}$). 
+Then the generation for each canvas is by following sequences:
+\begin{itemize}
+	\item \textbf{Step 1: Preparations.} 
+	We first enlarge the canvas size by:
+	\begin{align*}
+		\text{canvas\_size\_enlarged} = \text{canvas\_size} + 2\times \text{max\_component\_size}
+	\end{align*}
+	Denote the enlarged canvas as the main canvas.
+	\item \textbf{Step 2: Generating and Inserting Glomerulus-proximal Tubules Cluster} \\
+We calculate the number of clusters by: $\text{n\_cluster} = \left \lceil{p_1*  \text{item\_num} }\right \rceil$. Then for every cluster, we do:
+	\begin{itemize}
+			\item Construct a temporary cluster canvas with size of cluster\_size.
+			\item Randomly pick an item from the glomerulus class without replacement (once the image in the list is exhausted, the selection will be re-filled), augment the glomerulus item, and append the item to the cluster canvas. 
+			\item Randomly select pre-defined numbers (300 by default) of proximal tubules without replacement, apply augmentation and try to insert it into the canvas without overlaping with other items.
+			\item Try to randomlly insert the cluster canvas to the main canvas.
+\end{itemize}
+	\item \textbf{Step 3: Generating and Inserting Artery and Arteriole}\\
+	\begin{itemize}
+		\item we calculate the total number of arteries and arterioles, as well as the proportion by:\\
+		\begin{align*}
+		\text{n\_artery\_and\_arterioles}  &= \text{n\_item} - \text{n\_cluster}\\
+		p'_2&= p_2 / (p_2+p_3)\\
+		p'_3&= p_3 / (p_2+p_3)\\
+		\end{align*}	
+		\item 	Then we randomize the number of arteries and number arterioles by sampling from: 
+		(n\_artery, n\_artery) $\sim$ Multinomial(n\_artery\_and\_arterioles, $p'_2$, $p'_3$).
+		\item For every item, we randomly pick it from corresponding class without replacement, apply augmentation and randomly insert it into the main canvas.
+	\end{itemize}
+\item \textbf{Step 4: Generating and Insering Distal Tubules}\\	
+By default, we set the number of distal tubules in every canvas as 3000. For every item, we randomly pick it without replacement, apply augmentation and randomly insert it into the main canvas.
+\item \textbf{Step 5: Postprocessing}	
+After inserting all components, we postprocess the main canvas by following steps:
+\begin{itemize}
+	\item Cut the enlarged main canvas by cropping the center part.
+	\item Generate the background by example\_image
+	\item Append the background to the main canvas where there is empty.
+	\item Add random gaussian noise generated from $N(0, \sigma^2)$ on every pixel.
+\end{itemize}
+\end{itemize}
+
+
+\section{Sub-steps in Generative Process}
+To avoid redundency in the generative process description, we illustrate the details of related sub-steps in this section. 
+\subsection{Augmentation}
+We applied augmentation for every items we added to the collage. For instances other than distal tubules, we applied flip, grid distortion, transpose, translate, scale and rotation with randomness. If the input items are distal tubules, the augmentation method is almost the same except that we provide a consistent direction augmentation. That is to say, when applying random rotation, we constrain the  rotation degree between 0  to 15 (-90 degree to 90 degree for other items). Thus, the distal tubules' directions won't be diverged a lot from the original one.  
+\subsection{Insertion}
+Every time we generated an augmented item, we need to insert it to the main canvas. Based on different situations and items, the insertion strategy are different.
+\subsubsection{Initial Insertion}
+The ``Initial Insertion'' is only applied to the first Glomerulus-proximal tubules cluster at Step 2, because there is no other items on the canvas. Hence this process just randomly pick a place on the canvas while keeping all of the cluster inside of the canvas, and then insert the cluster into the main canvas.
+\subsubsection{Secondary Insertion}
+The ``Secondary Insertion'' is only applied to the second and following Glomerulus-proximal tubules cluster at Step 2 and the artery and arteriole at Step 3. 
+In this process, we first randomly pick a place on the canvas while keeping all of the cluster inside of the canvas. Then we check whether there is an overlapping with existing items on the canvas, if so, we'll randomize the location and check again. If not, we'll insert the item to the canvas. For every item, we'll forgive appending that item to the canvas if we failed to find a legal position within ``patience'' number (100 by default) of times.
+
+\subsubsection{Try Insertion}
+The ``Try Insertion'' is applied to every distal tubule. In order to control the density of images by a numerical value called \textit{step\_length}, we apply an escape-overlapping algorithm. If the initial point is overlapping, try to "escape" the overlapping and append at the first position successfuly escape. If the initial point is not overlapping, try to find a overlapping point and append at the last non-overlapping point before this one. Similar to the ``Secondary Insertion'', for every item we'll forgive appending that item to the canvas if we failed to find a legal position within ``patience'' number (100 by default) of times. In detail, the algorithm is demostrated below. 
+\begin{algorithm}[ht]
+	\label{algo: collage_generator_insertion}
+	\SetAlgoLined
+	\caption{vignette\_insertion(vignette, patience, step\_length)}
+	Start with a random position on the canvas\;
+	
+	\eIf{Inserting the $vignette$ here causes an overlap}
+	{{\For {$patience$ \text{times}}{
+				move the insertion point by \textit{step\_length} in both x and y, until we find a position that will no longer overlap any inserted vignettes\;
+			}
+			Use this position as the $add\_point$\;}}
+	{{\For {$patience$ \text{times}}{
+				move the insertion point by \textit{step\_length} in both x and y, until we find a position that has an overlap with any inserted vignettes\;}
+			Use the last position before overlap as the $add\_point$\;}}
+	Insert Vignette at $add\_point$\;
+\end{algorithm} 
+
+\subsection{Background Generation}
+Based on pre-processed background material, we randomly generating a new background by following steps:
+\begin{itemize}
+	\item Scan the background image by a sliding window with certain stride. Meanwhile, every time the sliding window moves, we add random noises to those 4 corners of the window to allow us cut more stochastic background materials.
+	\item For every cutted material, we ensure most of the places are nonempty by a threshold. Append all legal materials to a list.
+	\item Construct an empty canvas. Scan the canvas by a sliding window with certain stride. Similarly, we'll add random noises to thoes 4 corners of window, and then we randomly pick a background material from the list, apply augmentations, and append to the canvas.
+\end{itemize}
+\section{Example}
+We present the generative process by an example with default parameters.\\
+\includegraphics[scale=0.5]{./collage_generator_example.png}
+ 
+\end{document}
