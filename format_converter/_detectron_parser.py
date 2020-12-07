@@ -242,7 +242,7 @@ class _detectron_parser():
             pass
         return mask
 
-    def save_formal_output(formal_output, path):
+    def save_formal_output(self, formal_output, path):
         '''
         save the list produced by parse_detectron_ROI as a json file
         Args: 
@@ -255,7 +255,7 @@ class _detectron_parser():
             #BoxMode.XYXY_ABS will be dumped to 0
             json.dump(formal_output_dict, f)
 
-    def load_formal_output(path, bbox_mode=BoxMode.XYXY_ABS):
+    def load_formal_output(self, path, bbox_mode=BoxMode.XYXY_ABS):
         '''
         Load the list produced by parse_detectron_ROI from a json file
         Args: 
