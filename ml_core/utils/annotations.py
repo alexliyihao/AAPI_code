@@ -307,7 +307,7 @@ def annotation_to_mask(annotations,
 
 
 def mask_to_polygon(binary_mask, min_area):
-    image, contours, hierarchy = cv2.findContours(cv2.convertScaleAbs(binary_mask),
+    contours, hierarchy = cv2.findContours(cv2.convertScaleAbs(binary_mask),
                                                   cv2.RETR_EXTERNAL,
                                                   cv2.CHAIN_APPROX_TC89_L1)
 
