@@ -241,3 +241,35 @@ class _detectron_parser():
         except:
             pass
         return mask
+
+    def save_formal_output(self, formal_output, path):
+        '''
+        save the list produced by parse_detectron_ROI as a json file
+        Args: 
+            formal_output: the list produced by parse_detectron_ROI
+
+            path: the path of the saved json file
+        '''
+        formal_output_dict = {'list':formal_output}
+        with open(path, 'w') as f:
+            #BoxMode.XYXY_ABS will be dumped to 0
+            json.dump(formal_output_dict, f)
+
+    def load_formal_output(self, path, bbox_mode=BoxMode.XYXY_ABS):
+        '''
+        Load the list produced by parse_detectron_ROI from a json file
+        Args: 
+            path: the path of the saved json file
+
+            bbox_mode: an object from BoxMode class
+        Returns:
+            the list of formal_output
+        '''
+        with open(path, 'r') as f:
+            data = json.load(f)
+        data = data['list']
+        for i, _img_data in enumerate(data):
+            _annotations = _img_data['annotations']
+            for j in range(len(_annotations)):
+                data[i]['annotations'][j]['bbox_mode'] = bbox_mode
+        return data
