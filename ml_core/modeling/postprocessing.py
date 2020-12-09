@@ -19,7 +19,7 @@ from ..preprocessing.patches_extraction import extract_img_patches, Extractor
 from ..utils.annotations import mask_to_annotation
 from .unet import UNet
 from ..utils.slide_utils import read_full_slide_by_level, generate_patches_coords, get_biopsy_contours, \
-    get_biopsy_covered_patches_coords
+    get_biopsy_covered_patches_coords, get_biopsy_mask
 
 """
 ========= Morphological Postprocessing on Masks ====================
@@ -53,7 +53,11 @@ def construct_inference_dataloader_from_patches(patches, batch_size):
     return dataloader
 
 
-def construct_inference_dataloader_from_ROI(ROI, extractor, batch_size):
+def construct_inference_dataloader_from_ROI(ROI, extractor, batch_size, extract_foreground=False):
+    if extract_foreground:
+        biopsy_mask = get_biopsy_mask(ROI)
+        ROI = np.array(ROI)
+        ROI = cv2.bitwise_and(ROI, ROI, mask=biopsy_mask)
     patches, indices = extract_img_patches(img=ROI, extractor=extractor)
     return construct_inference_dataloader_from_patches(patches, batch_size)
 
