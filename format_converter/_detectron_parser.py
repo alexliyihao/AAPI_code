@@ -208,14 +208,17 @@ class _detectron_parser():
             mask: 2d np.ndarray with dtype boolean, the boolean mask of {label}
         """
         pixel_mask = torch.zeros(pred_instance.image_size, device="cuda")
-        for i in pred_instance[pred_instance.pred_classes == label].pred_masks:
-            pixel_mask = torch.logical_or(pixel_mask, i)
-        return pixel_mask.cpu().numpy()
+        try:
+            for i in pred_instance[pred_instance.pred_classes == label].pred_masks:
+                pixel_mask = torch.logical_or(pixel_mask, i)
+            return pixel_mask.cpu().numpy()
+        except:
+            return pixel_mask.cpu().numpy()
 
     def parse_np_masks(self, pred_instance):
         """
         parse a pred_instance into a pixel mask with 1:glom, 2: artery, 3: tubules
-        The label correspondence
+        the importance is considered as glom > vessels > tubules
         Args:
             pred_instance: detectron2.structures.instances.Instances object,
                            can be obtained from predictor(image)["instances"]
@@ -224,20 +227,37 @@ class _detectron_parser():
                   1:glom, 2: artery and arteriole, 3: tubules
         """
         mask = np.zeros(pred_instance.image_size)
+
+        arteriole_mask = self._extract_mask(pred_instance = pred_instance, label = 1)
+        artery_mask = self._extract_mask(pred_instance = pred_instance, label = 2)
+        distal_tubules_mask = self._extract_mask(pred_instance = pred_instance, label = 3)
+        glom_mask = self._extract_mask(pred_instance = pred_instance, label = 4)
+        proximal_tubules_mask = self._extract_mask(pred_instance = pred_instance, label = 5)
+
         try:
-            mask += self._extract_mask(pred_instance = pred_instance, label = 4).astype("uint8")
+            mask = glom_mask.astype("uint8")
         except:
             pass
 
         try:
-            mask += 2* np.logical_or(self._extract_mask(pred_instance = pred_instance, label = 1),
-                                     self._extract_mask(pred_instance = pred_instance, label = 2)).astype("uint8")
+            # when mask is not specified as glomerlus but can be specified as vessels:
+            mask = np.where(
+              np.logical_and(
+                np.logical_or(arteriole_mask,artery_mask),
+                np.logical_not(mask)
+                ),
+                2, mask)
         except:
             pass
 
         try:
-            mask += 3* np.logical_or(self._extract_mask(pred_instance = pred_instance, label = 3),
-                                     self._extract_mask(pred_instance = pred_instance, label = 5)).astype("uint8")
+            mask = np.where(
+              np.logical_and(
+                np.logical_or(distal_tubules_mask, proximal_tubules_mask),
+                np.logical_not(mask)
+                ),
+                3, mask)
+
         except:
             pass
         return mask
