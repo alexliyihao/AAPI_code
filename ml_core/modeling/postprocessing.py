@@ -1,5 +1,6 @@
 import configparser
 from typing import List
+from datetime import datetime
 
 from torch.utils.data import TensorDataset, DataLoader
 import torch
@@ -19,7 +20,7 @@ from ..preprocessing.patches_extraction import extract_img_patches, Extractor
 from ..utils.annotations import mask_to_annotation
 from .unet import UNet
 from ..utils.slide_utils import read_full_slide_by_level, generate_patches_coords, get_biopsy_contours, \
-    get_biopsy_covered_patches_coords, get_biopsy_mask
+    get_biopsy_covered_patches_coords
 
 """
 ========= Morphological Postprocessing on Masks ====================
@@ -53,11 +54,7 @@ def construct_inference_dataloader_from_patches(patches, batch_size):
     return dataloader
 
 
-def construct_inference_dataloader_from_ROI(ROI, extractor, batch_size, extract_foreground=False):
-    if extract_foreground:
-        biopsy_mask = get_biopsy_mask(ROI)
-        ROI = np.array(ROI)
-        ROI = cv2.bitwise_and(ROI, ROI, mask=biopsy_mask)
+def construct_inference_dataloader_from_ROI(ROI, extractor, batch_size):
     patches, indices = extract_img_patches(img=ROI, extractor=extractor)
     return construct_inference_dataloader_from_patches(patches, batch_size)
 
@@ -133,6 +130,20 @@ def generate_heatmap(size, output, extractor: Extractor, output_coords=None, thr
 """
 
 
+def get_latest_model_from_dir(model_root,
+                              timestamp_format="%Y-%m-%dT%H:%M:%S"):
+    model_paths = []
+    for path in Path(model_root).glob("*.ckpt"):
+        try:
+            ts = datetime.strptime(path.name, timestamp_format)
+        except ValueError:
+            # use modification time
+            ts = datetime.fromtimestamp(path.stat().st_mtime)
+        model_paths.append((path, ts))
+    model_paths.sort(key=lambda t: t[1], reverse=True)
+    return None if not model_paths else model_paths[0][0].resolve()
+
+
 def load_label_info_from_config(config_file):
     config = configparser.ConfigParser()
     config.read(config_file)
@@ -140,7 +151,8 @@ def load_label_info_from_config(config_file):
     for section_name in config.sections():
         section = config[section_name]
         model_root = Path(config_file).parent / Path(config[section_name]["model_root"])
-        section["model_path"] = str(model_root / f"{section_name}_best_model.ckpt")
+        model_path = get_latest_model_from_dir(model_root / section_name)
+        section["model_path"] = str(model_path)
         section["label_name"] = section_name
         section["extractor_config_name"] = f"AAPI_{section_name}"
         label_info = label_info.append(dict(section), ignore_index=True)

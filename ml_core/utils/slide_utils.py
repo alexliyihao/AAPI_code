@@ -9,7 +9,6 @@ from skimage.filters import threshold_otsu
 import cv2
 from tqdm import tqdm
 from shapely.geometry import Polygon, box
-from shapely.ops import cascaded_union
 
 
 from .annotations import create_covering_rectangles_using_clusters, create_covering_rectangles_greedy
@@ -143,19 +142,6 @@ def generate_patches_coords(width, height, patch_size, stride, pad_size):
     return output_coords
 
 
-def get_biopsy_mask(image):
-    region_contours = get_biopsy_contours(image)
-    mask = np.zeros_like(np.array(image))[..., 0] # get 2D mask
-    # union_contour = cascaded_union(region_contours)
-    round_coords = lambda x: np.array(x).round().astype(np.int32)
-    for contour in region_contours:
-        tmp_mask = np.zeros_like(image)
-        exteriors = [round_coords(poly.convex_hull.exterior.coords) for poly in [contour]]
-        cv2.fillPoly(tmp_mask, exteriors, [255] * 3)
-        mask = np.bitwise_or(mask, tmp_mask[..., 0])
-    return mask
-
-
 def get_biopsy_contours(image):
     # detect biopsy regions: Otsu's thresholding after Gaussian filtering
     blur = cv2.GaussianBlur(np.array(image), (25, 25), 0)
@@ -209,9 +195,12 @@ def crop_ROI_using_annotations(slide_path,
     class_root = save_dir / class_name
     class_root.mkdir(exist_ok=True, parents=True)
 
+    saved_paths = []
+
     for i, upper_left in enumerate(upper_left_coords):
         ROI_path = class_root / f"{slide_name}_ROI_{i:03d}_{upper_left}.png"
         mask_path = class_root / f"{ROI_path.with_suffix('').name}_mask.png"
+        saved_paths.append((ROI_path, mask_path))
 
         if not mask_path.exists():
             mask = annotation_to_mask(filtered_annotations,
@@ -233,3 +222,5 @@ def crop_ROI_using_annotations(slide_path,
                                          relative_coordinate=True)
 
             img.save(ROI_path)
+
+    return saved_paths
