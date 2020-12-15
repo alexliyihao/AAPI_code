@@ -17,3 +17,5 @@ consuming when entities are only a few pixels in diameter. This project aims to 
 maximally leveraging expert annotator (clinician) time by interleaving annotation (label generation) with
 inference to provide an intuitive notion of model fit and the minimal amount of labeling required for
 acceptable model performance.
+
+Presentation: https://youtu.be/XTHRxxOoG-k
