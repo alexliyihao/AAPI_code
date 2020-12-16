@@ -49,3 +49,5 @@ models. Can also be used as a reference for calling low-level functions.
 6. [Demo Notebooks](notebooks): contains several useful demo notebooks showing
 the usage of core components. 
 
+## Video Demonstration
+A video presentation with slides can be found on Youtube via https://youtu.be/XTHRxxOoG-k.
