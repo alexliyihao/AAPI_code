@@ -18,6 +18,13 @@ maximally leveraging expert annotator (clinician) time by interleaving annotatio
 inference to provide an intuitive notion of model fit and the minimal amount of labeling required for
 acceptable model performance.
 
+## Project Final Report
+The final report for this project can be seen from: [finalreport](Auto-annotation of Pathology Images.pdf)
+
+## Video Demonstration
+A video presentation with slides can be found on Youtube via https://youtu.be/XTHRxxOoG-k.
+
+
 ## Installation
 1. Required packages can be found in the [requirements](requirements.txt) file,
 it's recommended to use a virtual environment to install all required packages through pip.
