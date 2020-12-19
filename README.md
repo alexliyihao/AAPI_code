@@ -19,7 +19,7 @@ inference to provide an intuitive notion of model fit and the minimal amount of 
 acceptable model performance.
 
 ## Project Final Report
-The final report for this project can be seen from: [finalreport](Auto-annotation_of_Pathology_Images.pdf)
+The final report for this project can be seen from: [Final Report](Auto-annotation_of_Pathology Images.pdf)
 
 ## Video Demonstration
 A video presentation with slides can be found on Youtube via https://youtu.be/XTHRxxOoG-k.
