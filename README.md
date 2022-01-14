@@ -1,5 +1,7 @@
 # Auto annotation of Pathology Images
 
+## If you need a documented version, please use https://github.com/Auto-annotation-of-Pathology-Images/AAPI_code , this repo is for my personal use, thanks
+
 Columbia Data Science Institute Capstone Project, Fall 2020
 
 Mentor: Dr. Adler Perotte
@@ -17,3 +19,4 @@ consuming when entities are only a few pixels in diameter. This project aims to 
 maximally leveraging expert annotator (clinician) time by interleaving annotation (label generation) with
 inference to provide an intuitive notion of model fit and the minimal amount of labeling required for
 acceptable model performance.
+
