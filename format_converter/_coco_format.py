@@ -2,7 +2,7 @@ import datetime
 import json
 import os
 import glob
-from PIL import Image
+from PIL import Image as Img
 import numpy as np
 import datetime
 from pytz import timezone

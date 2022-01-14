@@ -11,12 +11,19 @@ from PIL import Image
 import numpy as np
 from tqdm import tqdm
 import pandas as pd
+import cv2
 from sklearn.metrics import f1_score, precision_score, recall_score
+
+from detectron2 import model_zoo
+from detectron2.engine import DefaultPredictor
+from detectron2.config import get_cfg
 
 from ml_core.preprocessing.patches_extraction import Extractor
 from ml_core.preprocessing.dataset import create_dataloader
 from ml_core.modeling.unet import UNet
 from ml_core.modeling.postprocessing import construct_inference_dataloader_from_ROI, predict_on_single_ROI
+from ml_core.utils.slide_utils import get_biopsy_mask
+from format_converter import format_converter
 
 
 CLASS_NAMES = ("Glomerulus", "Artery", "Tubules", "Arteriole")
@@ -26,12 +33,16 @@ def test_models(args):
     config = configparser.ConfigParser()
     config.read(args.model_config_path)
 
+    is_unet = True
     if args.use_collage:
         section_name = "Collage"
     elif args.use_multistain:
         section_name = "MultiStain"
+    elif args.use_maskrcnn:
+        section_name = "MaskRCNN"
+        is_unet = False
     else:
-        raise RuntimeError(f"Neither --use_collage nor --use_multistain is used in args.")
+        raise RuntimeError(f"None of '--use_collage', '--use_multistain' or '--use_maskrcnn' is specified in args.")
 
     section = config[section_name]
     args.dataset_name = section_name
@@ -41,24 +52,31 @@ def test_models(args):
         print(f"Start testing class: {class_name}")
         print("=" * 25)
 
-        version = section.get(class_name)
-        ckpt_dir = (args.log_dir /
-                    Path(f"{section_name}/{class_name}/lightning_logs/{version}/checkpoints"))
-        try:
-            model_path = next(ckpt_dir.glob("*.ckpt"))
-        except StopIteration:
-            print(f"[Warning] No saved checkpoints found at {ckpt_dir}.")
-            continue
+        if is_unet:
+            # model loading for UNet models
+            version = section.get(class_name)
+            ckpt_dir = (args.log_dir /
+                        Path(f"{section_name}/{class_name}/lightning_logs/{version}/checkpoints"))
+            try:
+                model_path = next(ckpt_dir.glob("*.ckpt"))
+            except StopIteration:
+                print(f"[Warning] No saved checkpoints found at {ckpt_dir}.")
+                continue
 
-        model = UNet.load_from_checkpoint(str(model_path))
-        gpu_cnt = 1 if args.use_gpu else 0
-        trainer = Trainer(gpus=gpu_cnt, default_root_dir=None)
+            model = UNet.load_from_checkpoint(str(model_path))
+            gpu_cnt = 1 if args.use_gpu else 0
+            trainer = Trainer(gpus=gpu_cnt, default_root_dir=None)
+            pred_closure = unet_pred_closure(model)
 
-        if args.test_mode in [0, 2]:
-            patch_level_tests(model, trainer, class_name, args)
+            if args.test_mode in [0, 2]:
+                patch_level_tests(model, trainer, class_name, args)
+
+        else:
+            ckpt_path = args.log_dir / section_name / section.get("CKPT_REL_PATH")
+            pred_closure = maskrcnn_pred_closure(ckpt_path)
 
         if args.test_mode in [1, 2]:
-            roi_level_tests(model, class_name, args)
+            roi_level_tests(pred_closure, class_name, args)
 
         print("=" * 25 + "\n")
 
@@ -79,7 +97,58 @@ def patch_level_tests(model, trainer, class_name, args):
     return metrics
 
 
-def roi_level_tests(model, class_name, args):
+def unet_pred_closure(model):
+    def unet_predict_roi(class_name, roi):
+        extractor = Extractor(config_section_name=f"AAPI_{class_name}")
+        data = construct_inference_dataloader_from_ROI(roi, extractor, 32)
+        heatmap = predict_on_single_ROI(model, data, roi.size, extractor, 0.5)
+        biopsy_mask = get_biopsy_mask(roi)
+        heatmap = cv2.bitwise_and(heatmap, heatmap, mask=biopsy_mask)
+        del data
+        return heatmap
+
+    return unet_predict_roi
+
+
+def maskrcnn_pred_closure(ckpt_path):
+    cfg = get_cfg()
+    cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
+    cfg.DATALOADER.NUM_WORKERS = 2
+    cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = 32  # Check this, default 512
+    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 6
+    cfg.MODEL.WEIGHTS = str(ckpt_path.resolve())
+    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.2  # set a custom testing threshold
+
+    predictor = DefaultPredictor(cfg)
+    fc = format_converter(root_path="/tmp")
+
+    def maskrcnn_predict_roi(class_name, roi):
+        outputs = predictor(np.array(roi))
+        instances = outputs["instances"]
+        mask = fc.parse_np_masks(pred_instance=instances)
+        class_label = CLASS_NAMES.index(class_name) + 1
+        mask[mask != class_label] = 0
+        mask[mask == class_label] = 255
+        return mask
+
+    return maskrcnn_predict_roi
+
+
+def roi_level_tests(model_pred_closure, class_name, args):
+    """
+
+    Parameters
+    ----------
+    model_pred_closure: callable
+        input: class_name, ROI
+        output: predicted heatmap
+    class_name
+    args
+
+    Returns
+    -------
+
+    """
     roi_data_root = args.data_root / Path(f"AAPI/ROI_data/test/{class_name}/")
     image_paths = list(filter(lambda path: "mask" not in str(path.name), roi_data_root.glob("*.png")))
     rois = []
@@ -111,15 +180,12 @@ def roi_level_tests(model, class_name, args):
                      pos_label=True)
         return float(f"{res:.5f}")
 
-    extractor = Extractor(config_section_name=f"AAPI_{class_name}")
     pbar = tqdm(zip(rois, masks))
     for roi, mask in pbar:
-        data = construct_inference_dataloader_from_ROI(roi, extractor, 32)
-
         mask_2d = np.reshape(mask, (*reversed(mask.size), -1))[..., 0]
         binary_mask = np.asarray(mask_2d, dtype=np.bool)
 
-        heatmap = predict_on_single_ROI(model, data, roi.size, extractor, 0.5)
+        heatmap = model_pred_closure(class_name, roi)
         binary_heatmap = np.asarray(heatmap, dtype=np.bool)
 
         report_dict["target"].append(Path(roi.filename).name)
@@ -128,7 +194,6 @@ def roi_level_tests(model, class_name, args):
         report_dict["recall"].append(apply_flatten_metric(recall_score, binary_heatmap, binary_mask))
 
         pbar.set_description(f"Avg F1: {np.mean(report_dict['f1_score']):.5f}")
-        del data
         Image.fromarray(heatmap).save(heatmap_cache_dir / Path(roi.filename).name)
 
     report = pd.DataFrame(report_dict)
@@ -158,12 +223,16 @@ def parse_arguments(input_args=None):
     dataset_name_group = parser.add_mutually_exclusive_group()
     dataset_name_group.add_argument("--use_collage",
                                     action="store_true",
-                                    help="use collage data as auxiliary dataset, false if not specified;"
-                                         "mutually exclusive with --use_multistain")
+                                    help="test UNet models trained on collage data,"
+                                         "false as default;")
     dataset_name_group.add_argument("--use_multistain",
                                     action="store_true",
-                                    help="use multistain data as auxiliary dataset, false if not specified;"
-                                         "mutually exclusive with --use_collage")
+                                    help="test UNet models trained on multistain data,"
+                                         "false as default;")
+    dataset_name_group.add_argument("--use_maskrcnn",
+                                    action="store_true",
+                                    help="test maskrcnn models trained on collage data,"
+                                         "false as default")
 
     parser.add_argument("--patch_size", default=256, type=int,
                         help='size of cropped patches')
@@ -171,10 +240,10 @@ def parse_arguments(input_args=None):
                         action="store_true",
                         help="Use GPU for inference.")
     parser.add_argument("--test_mode",
-                        default=0,
+                        default=1,
                         type=int,
                         choices=[0,1,2],
-                        help="0: patch level testings;"
+                        help="0: patch level testings [Only available for UNet];"
                              "1: ROI level testings;"
                              "2: both patch and ROI level testings")
 

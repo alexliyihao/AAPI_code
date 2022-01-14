@@ -1,5 +1,6 @@
 import configparser
 from typing import List
+from datetime import datetime
 
 from torch.utils.data import TensorDataset, DataLoader
 import torch
@@ -129,6 +130,20 @@ def generate_heatmap(size, output, extractor: Extractor, output_coords=None, thr
 """
 
 
+def get_latest_model_from_dir(model_root,
+                              timestamp_format="%Y-%m-%dT%H:%M:%S"):
+    model_paths = []
+    for path in Path(model_root).glob("*.ckpt"):
+        try:
+            ts = datetime.strptime(path.name, timestamp_format)
+        except ValueError:
+            # use modification time
+            ts = datetime.fromtimestamp(path.stat().st_mtime)
+        model_paths.append((path, ts))
+    model_paths.sort(key=lambda t: t[1], reverse=True)
+    return None if not model_paths else model_paths[0][0].resolve()
+
+
 def load_label_info_from_config(config_file):
     config = configparser.ConfigParser()
     config.read(config_file)
@@ -136,7 +151,8 @@ def load_label_info_from_config(config_file):
     for section_name in config.sections():
         section = config[section_name]
         model_root = Path(config_file).parent / Path(config[section_name]["model_root"])
-        section["model_path"] = str(model_root / f"{section_name}_best_model.ckpt")
+        model_path = get_latest_model_from_dir(model_root / section_name)
+        section["model_path"] = str(model_path)
         section["label_name"] = section_name
         section["extractor_config_name"] = f"AAPI_{section_name}"
         label_info = label_info.append(dict(section), ignore_index=True)

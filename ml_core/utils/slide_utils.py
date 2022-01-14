@@ -195,9 +195,12 @@ def crop_ROI_using_annotations(slide_path,
     class_root = save_dir / class_name
     class_root.mkdir(exist_ok=True, parents=True)
 
+    saved_paths = []
+
     for i, upper_left in enumerate(upper_left_coords):
         ROI_path = class_root / f"{slide_name}_ROI_{i:03d}_{upper_left}.png"
         mask_path = class_root / f"{ROI_path.with_suffix('').name}_mask.png"
+        saved_paths.append((ROI_path, mask_path))
 
         if not mask_path.exists():
             mask = annotation_to_mask(filtered_annotations,
@@ -219,3 +222,5 @@ def crop_ROI_using_annotations(slide_path,
                                          relative_coordinate=True)
 
             img.save(ROI_path)
+
+    return saved_paths

@@ -5,7 +5,7 @@ from .modeling.postprocessing import load_label_info_from_config, predict_on_bat
 from .utils.annotations import merge_annotations, create_asap_annotation_file
 
 
-default_label_info = load_label_info_from_config(Path(__file__).parent / "label_info.ini")
+default_label_info_path = Path(__file__).parent / "label_info.ini"
 
 
 def _aggregate_and_format_annotations(annotations):
@@ -52,7 +52,7 @@ def segment_ROI(ROIs,
 
     """
     if label_info is None:
-        label_info = default_label_info
+        label_info = load_label_info_from_config(default_label_info_path)
     predicted_masks, annotations = predict_on_batch_ROIs(ROIs, upper_left_coords, label_info, batch_size)
     xml_annotation = _aggregate_and_format_annotations(annotations)
 
@@ -88,7 +88,7 @@ def segment_WSI(slide_path,
     """
 
     if label_info is None:
-        label_info = default_label_info
+        label_info = load_label_info_from_config(default_label_info_path)
 
     predicted_masks, annotations = predict_on_WSI(slide_path, label_info, batch_size)
     xml_annotation = _aggregate_and_format_annotations(annotations)
