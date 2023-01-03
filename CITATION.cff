@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "To use or cite this repository, please cite it as below."
+authors:
+- family-names: "Li"
+  given-names: "Yihao"
+- family-names: "Huang"
+  given-names: "Chao"
+- family-names: "Yang"
+  given-names: "Shuo"
+- family-names: "Ma"
+  given-names: "Yufeng"
+- family-names: "Zhu"
+  given-names: "Xiaoyun"
+title: "Auto Annotation of Pathology Images"
+date-released: 2020-12-18
+url: "https://github.com/alexliyihao/AAPI_code"
